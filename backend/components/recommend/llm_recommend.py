@@ -140,7 +140,7 @@ class LLMReranker:
             ジャンル: {genre}
             公開年: {published_year}
             あらすじ: {synopsis}
-            映画の特徴: {"\n".join(join_features_str)}
+            映画の特徴: {join_features_str}
             """
             movie_information_list.append(movie_information_text)
 
