@@ -16,7 +16,6 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libpq-dev \
     curl \
     && rm -rf /var/lib/apt/lists/*
-
 # 3. 依存ライブラリ一覧（requirements.txt）のコピーとインストール
 # ※ キャッシュを効率的に使うため、ソースコード全体のコピーより先に依存関係を処理
 COPY requirements.txt .
