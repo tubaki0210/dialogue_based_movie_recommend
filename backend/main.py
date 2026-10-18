@@ -97,7 +97,7 @@ def start_session(req: StartSessionRequest):
     # 1. users テーブルから長期嗜好を取得
     user_res = supabase.table("users").select("*").eq("id", req.user_id).execute()
     if not user_res.data:
-        raise HTTPException(status_code=404, detail="User not found in 'users' table")
+        raise HTTPException(status_code=404, detail="該当のuser_idは存在しません")
     
     user_row = user_res.data[0]
     
@@ -123,7 +123,7 @@ def start_session(req: StartSessionRequest):
     }).execute()
     
     if not session_res.data:
-        raise HTTPException(status_code=500, detail="Failed to create chat session")
+        raise HTTPException(status_code=500, detail="セッションの作成に失敗しました")
         
     session_id = session_res.data[0]["id"]
 
@@ -156,7 +156,7 @@ async def chat_endpoint(req: ChatMessageRequest):
     # 1. セッションデータの取得
     sess_res = supabase.table("chat_sessions").select("*").eq("id", session_id).execute()
     if not sess_res.data:
-        raise HTTPException(status_code=404, detail="Session not found")
+        raise HTTPException(status_code=404, detail="セッションが見つかりませんでした")
     
     session_data = sess_res.data[0]
     user_id = session_data["user_id"]
@@ -164,7 +164,7 @@ async def chat_endpoint(req: ChatMessageRequest):
     # 2. ユーザーの長期嗜好と視聴履歴を取得
     user_res = supabase.table("users").select("*").eq("id", user_id).execute()
     if not user_res.data:
-        raise HTTPException(status_code=404, detail="User profile not found")
+        raise HTTPException(status_code=404, detail="ユーザー情報が見つかりませんでした")
     user_row = user_res.data[0]
 
     ratings_res = supabase.table("ratings").select("movie_id, title, rating").eq("user_id", user_id).execute()
