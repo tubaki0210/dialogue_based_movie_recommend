@@ -133,7 +133,8 @@ class LLMReranker:
             published_year = target_movie_metadata.get("year")
             synopsis = target_movie_metadata.get("summary")
             features = target_movie_metadata.get("features", [])
-            join_features_str = [f"・{feature}" for feature in features]
+            join_features_list = [f"・{feature}" for feature in features]
+            join_features_str = "\n".join(join_features_list)
             movie_information_text = f"""
             タイトル: {title}
             ジャンル: {genre}
