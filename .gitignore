@@ -1,0 +1,45 @@
+# --- Node.js / Next.js (frontend) ---
+frontend/movie_recommend/node_modules/
+frontend/movie_recommend/.next/
+frontend/movie_recommend/out/
+frontend/movie_recommend/build/
+frontend/movie_recommend/public/*
+.pnp
+.pnp.js
+
+# --- Python / FastAPI (backend) ---
+backend/venv/
+backend/.venv/
+backend/__pycache__/
+backend/components/__pycache__/
+backend/components/generate_question/__pycache__/
+backend/components/mismatch_reasoning/__pycache__/
+backend/components/recommend/__pycache__/
+backend/utils/__pycache__/
+
+backend/*.pyc
+backend/.pytest_cache/
+
+# --- 環境変数・機密情報 ---
+.env
+.env.local
+.env.*.local
+backend/.env
+frontend/movie_recommend/.env.local
+
+# --- OS自動生成ファイル ---
+.DS_Store
+Thumbs.db
+
+# --- エディタ・IDE ---
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# --- ログや一時ファイル ---
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+*.log
