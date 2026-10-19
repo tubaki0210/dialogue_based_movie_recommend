@@ -46,26 +46,55 @@ app.add_middleware(
 )
 
 
-def fetch_movies_to_dict():
+def fetch_all_movies_from_supabase():
+  """Supabaseのmoviesテーブルからページネーションを使用して全件データを取得する"""
   print("Supabaseからmoviesテーブルのデータを取得中...")
+  all_rows = []
+  batch_size = 1000  # 1回に取得する上限件数
+  start = 0
 
-  # movies テーブルから全件取得（必要に応じて .select(...) でカラムを指定）
-  response = supabase.table("movies").select("*").execute()
-  rows = response.data
+  while True:
+    end = start + batch_size - 1
+    response = (
+        supabase.table("movies").select("*").range(start, end).execute()
+    )
+    rows = response.data
 
-  if not rows:
+    if not rows:
+      break
+
+    all_rows.extend(rows)
+    print(
+        f"  - {start} 〜 {start + len(rows) - 1}"
+        " 件目のデータを取得しました"
+    )
+
+    # 取得件数がバッチサイズ未満なら最後のページとみなして終了
+    if len(rows) < batch_size:
+      break
+
+    start += batch_size
+
+  print(f"合計 {len(all_rows)} 件のデータを取得しました。")
+  return all_rows
+
+
+def fetch_movies_to_dict():
+  """全件データを取得し、タイトルをキーにした辞書に変換する"""
+  # 切り出した関数を呼び出して全行データを取得
+  all_rows = fetch_all_movies_from_supabase()
+
+  if not all_rows:
     print("データが見つかりませんでした。")
     return {}
 
   # タイトルをキーにした辞書に変換
   movies_dict = {}
-  for row in rows:
+  for row in all_rows:
     title = row.get("title")
     if not title:
       continue
 
-    # 取得した行データを指定のフォーマットにマッピング
-    # （DBの列名に合わせて適宜調整してください）
     movies_dict[title] = {
         "movie_id": row.get("id"),  # DB側のカラム名が id の場合
         "title": title,
