@@ -16,11 +16,8 @@ class LLMReranker:
     TEMPERATURE = 0.7
     # MODEL = "gpt-4.1-mini-2025-04-14"
     MODEL = "gpt-6-luna"
-    def __init__(self, movie_json_path, llm_client : LLM):
-        with open(movie_json_path, "r", encoding='utf-8') as f:
-            self.movie_metadata = json.load(f)
-            f.close()
-            
+    def __init__(self, movie_metadata, llm_client : LLM):
+        self.movie_metadata = movie_metadata
         self.llm_client = llm_client
 
     def rerank(
@@ -129,7 +126,7 @@ class LLMReranker:
             if target_movie_metadata is None:
                 continue
             # title = target_movie_metadata.get("title")
-            genre = target_movie_metadata.get("genre")
+            genre = "、".join(target_movie_metadata.get("genre"))
             published_year = target_movie_metadata.get("year")
             synopsis = target_movie_metadata.get("summary")
             features = target_movie_metadata.get("features", [])
