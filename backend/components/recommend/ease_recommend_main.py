@@ -18,7 +18,7 @@ class EASEPredictor:
 
     def recommend(
             self, 
-            user_history, 
+            user_watch_history, 
             top_k=10
             ):
         """
@@ -26,7 +26,7 @@ class EASEPredictor:
         """
         x_new = np.zeros(self.num_movies)
         
-        for item in user_history:
+        for item in user_watch_history:
             m_id = item['movie_id']
             rating = item['rating']
             if m_id in self.movie_to_idx:
@@ -36,7 +36,7 @@ class EASEPredictor:
         # メモリ上の行列と計算
         predictions = x_new.dot(self.W)
         
-        for item in user_history:
+        for item in user_watch_history:
             m_id = item['movie_id']
             if m_id in self.movie_to_idx:
                 internal_idx = self.movie_to_idx[m_id]
