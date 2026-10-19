@@ -45,26 +45,64 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+
+def fetch_movies_to_dict():
+  print("Supabaseからmoviesテーブルのデータを取得中...")
+
+  # movies テーブルから全件取得（必要に応じて .select(...) でカラムを指定）
+  response = supabase.table("movies").select("*").execute()
+  rows = response.data
+
+  if not rows:
+    print("データが見つかりませんでした。")
+    return {}
+
+  # タイトルをキーにした辞書に変換
+  movies_dict = {}
+  for row in rows:
+    title = row.get("title")
+    if not title:
+      continue
+
+    # 取得した行データを指定のフォーマットにマッピング
+    # （DBの列名に合わせて適宜調整してください）
+    movies_dict[title] = {
+        "movie_id": row.get("id"),  # DB側のカラム名が id の場合
+        "title": title,
+        "genre": row.get("genre"),  # jsonbや文字列
+        "year": row.get("year"),
+        "length": row.get("length"),
+        "director": row.get("director"),
+        "script": row.get("script"),
+        "actor": row.get("actor"),
+        "summary": row.get("summary"),
+        "features": row.get("features", []),
+        "style": row.get("style"),
+    }
+
+  return movies_dict
+
 # AIモデルおよびマネージャーの初期化（サーバー起動時に一括ロード）
 llm_client = LLM(api_key)
 embedding_client = Embeddings(api_key)
 question_manager = QuestionManager(llm_client)
 
-movie_json_path = "./movie_data/movie_keyTitle_v4.json"
 ease_model_path = "./components/recommend/model/ease_model_v1.pkl"
 parquet_path = "./parquet/movie_vectors.parquet"
-
+movie_metadata = fetch_movies_to_dict()
 content_base_predictor = ContentBasePredictor(parquet_path, embedding_client)
 ease_predictor = EASEPredictor(ease_model_path)
 current_move_selector = SelectCurrentTurnMove(llm_client)
 pref_extractor = ExtractUserPreferences(llm_client)
-llm_reranker = LLMReranker(movie_json_path, llm_client)
+llm_reranker = LLMReranker(movie_metadata, llm_client)
 recommend_manager = RecommendManager(ease_predictor, content_base_predictor, llm_reranker)
 extractor = MovieFeatureExtractor(llm_client)
 movie_feature_combiner = CommonFeatureExtractor(embedding_client)
 mismatch_predictor = MismatchReasoning(llm_client)
 un_sim_extractor = ExtractUnSimCluster(embedding_client)
 un_mismatch_extractor = UnMismatchReasoning(llm_client)
+
+
 
 
 # 補助関数
