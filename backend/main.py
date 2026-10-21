@@ -15,6 +15,7 @@ from supabase_client import supabase
 # 既存モジュールのインポート（環境に合わせてパスを微調整してください）
 from utils.LLM import LLM
 from utils.Embedding import Embeddings
+from utils.replace_id_to_stream import replace_id_to_title_stream
 from components.generate_question.QuestionManager import QuestionManager
 from components.generate_question.QuestionContext import QuestionContext
 from components.mismatch_reasoning.MismatchReasoning import MismatchReasoning
@@ -92,11 +93,12 @@ def fetch_movies_to_dict():
   movies_dict = {}
   for row in all_rows:
     title = row.get("title")
-    if not title:
+    movie_id = str(row.get("id"))
+    if not (title or movie_id):
       continue
 
-    movies_dict[title] = {
-        "movie_id": row.get("id"),  # DB側のカラム名が id の場合
+    movies_dict[movie_id] = {
+        "movie_id": movie_id,  # DB側のカラム名が id の場合
         "title": title,
         "genre": row.get("genre"),  # jsonbや文字列
         "year": row.get("year"),
@@ -301,15 +303,16 @@ async def chat_endpoint(req: ChatMessageRequest):
         )
         context.update_short_term_preference(result_preferences)
 
-        # 推薦実行
-        stream_generator = recommend_manager.recommend(
-            watch_record,
-            already_recommend,
-            context.short_term_like,
-            context.short_term_dislike,
-            long_term_like,
-            long_term_dislike
-        )
+        raw_stream_generator = recommend_manager.recommend(
+                    watch_record,
+                    already_recommend,
+                    context.short_term_like,
+                    context.short_term_dislike,
+                    long_term_like,
+                    long_term_dislike
+                )
+        # 【追加】recommend の場合のみ『ID』を『タイトル』に置換するジェネレータでラップ
+        stream_generator = replace_id_to_title_stream(raw_stream_generator, movie_metadata)
 
     elif current_turn_move == "mismatch_question":
         recent_rec = extract_recent_recommend_response(dialogue_list)
