@@ -154,35 +154,23 @@ def extract_recent_recommend_response(dialogue: list) -> Optional[str]:
 class StartSessionRequest(BaseModel):
     user_id: str  # users.id (varchar)
 
+class InitQuestionRequest(BaseModel):
+    session_id: str
+
 
 class ChatMessageRequest(BaseModel):
     session_id: str  # chat_sessions.id (uuid)
     user_input: str
 
 
-# --- 1. セッション開始 API ---
+# --- 1. セッション開始 API（高速・DB処理のみ） ---
 @app.post("/api/session/start")
 def start_session(req: StartSessionRequest):
-    # 1. users テーブルから長期嗜好を取得
     user_res = supabase.table("users").select("*").eq("id", req.user_id).execute()
     if not user_res.data:
         raise HTTPException(status_code=404, detail="該当のuser_idは存在しません")
     
-    user_row = user_res.data[0]
-    
-    # 2. ratings テーブルから該当ユーザーの視聴履歴を取得
-    ratings_res = supabase.table("ratings").select("movie_id, title, rating").eq("user_id", req.user_id).execute()
-    watch_record = ratings_res.data if ratings_res.data else []
-
-    # QuestionContextに渡す dict 構造の組み立て
-    user_data = {
-        "id": user_row.get("id"),
-        "like_long_preference": user_row.get("long_term_like") or [],
-        "dislike_long_preference": user_row.get("long_term_dislike") or [],
-        "watch_record": watch_record
-    }
-
-    # 3. 新規チャットセッションを chat_sessions に作成
+    # 新規チャットセッションを作成（LLM生成は待たずに即返却）
     session_res = supabase.table("chat_sessions").insert({
         "user_id": req.user_id,
         "short_term_like": [],
@@ -196,27 +184,58 @@ def start_session(req: StartSessionRequest):
         
     session_id = session_res.data[0]["id"]
 
-    # 4. QuestionContext の初期化と最初の質問生成
-    context = QuestionContext(user_profile=user_data)
-    first_stream = question_manager.generate_question("first", context)
-    first_res_text = "".join(list(first_stream))
-
-    # 5. 最初の質問を chat_messages に保存
-    supabase.table("chat_messages").insert({
-        "session_id": session_id,
-        "role": "system",
-        "category": "first_question",
-        "content": first_res_text
-    }).execute()
-
     return {
         "session_id": session_id,
-        "first_message": first_res_text,
         "user_id": req.user_id
     }
 
+# --- 2. 初期質問ストリーミング API（LLM生成） ---
+@app.post("/api/session/init-question")
+def stream_init_question(req: InitQuestionRequest):
+    # セッション情報の取得
+    session_res = supabase.table("chat_sessions").select("*").eq("id", req.session_id).execute()
+    if not session_res.data:
+        raise HTTPException(status_code=404, detail="セッションが見つかりません")
+    
+    session_row = session_res.data[0]
+    user_id = session_row.get("user_id")
 
-# --- 2. チャット対話 API (SSE ストリーミング) ---
+    # ユーザー長期嗜好・履歴の取得
+    user_row = supabase.table("users").select("*").eq("id", user_id).execute().data[0]
+    ratings_res = supabase.table("ratings").select("movie_id, title, rating").eq("user_id", user_id).execute()
+    watch_record = ratings_res.data if ratings_res.data else []
+
+    user_data = {
+        "id": user_row.get("id"),
+        "like_long_preference": user_row.get("long_term_like") or [],
+        "dislike_long_preference": user_row.get("long_term_dislike") or [],
+        "watch_record": watch_record
+    }
+
+    # 初期質問の生成ストリーム
+    context = QuestionContext(user_profile=user_data)
+    first_stream = question_manager.generate_question("first", context)
+
+    async def event_generator():
+        full_res_text = ""
+        for chunk in first_stream:
+            full_res_text += chunk
+            yield f"data: {json.dumps({'content': chunk})}\n\n"
+
+        # 生成完了後にDB保存
+        supabase.table("chat_messages").insert({
+            "session_id": req.session_id,
+            "role": "system",
+            "category": "first_question",
+            "content": full_res_text
+        }).execute()
+
+        yield "data: [DONE]\n\n"
+
+    return StreamingResponse(event_generator(), media_type="text/event-stream")
+
+
+# チャット
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatMessageRequest):
     session_id = req.session_id

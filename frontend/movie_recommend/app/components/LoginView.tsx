@@ -3,7 +3,7 @@
 import { useState } from "react";
 
 interface LoginViewProps {
-  onSessionStarted: (sessionId: string, firstMessage: string) => void;
+  onSessionStarted: (sessionId: string) => void;
 }
 
 export default function LoginView({ onSessionStarted }: LoginViewProps) {
@@ -28,8 +28,7 @@ export default function LoginView({ onSessionStarted }: LoginViewProps) {
       }
 
       const data = await res.json();
-      setUserId(userId.trim())
-      onSessionStarted(data.session_id, data.first_message);
+      onSessionStarted(data.session_id); 
     } catch (err: any) {
       alert(err.message);
     } finally {

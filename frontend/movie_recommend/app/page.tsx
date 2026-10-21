@@ -6,7 +6,6 @@ import ChatField from "./components/ChatField";
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [initialMessage, setInitialMessage] = useState<string>("");
 
   return (
     <main className="flex flex-col h-screen max-w-6xl mx-auto p-4 font-sans bg-white">
@@ -15,13 +14,12 @@ export default function Home() {
       </header>
       {!sessionId ? (
         <LoginView
-          onSessionStarted={(sid, msg) => {
+          onSessionStarted={(sid) => {
             setSessionId(sid);
-            setInitialMessage(msg);
           }}
         />
       ) : (
-        <ChatField sessionId={sessionId} initialMessage={initialMessage} />
+        <ChatField sessionId={sessionId} />
       )}
     </main>
   );
