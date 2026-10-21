@@ -34,8 +34,6 @@ class RecommendManager:
             short_term_like_str, 
             short_term_dislike_str
             )
-        # return state1_candidate
-        # print(state1_candidate)
 
         # 2段階目(LLM)
         reponse = self.llm_rerank_predictor.rerank(
@@ -87,7 +85,6 @@ class RecommendManager:
             rec_movie["total_score"] = cb_score * cf_multiplier
 
         stage1_final_result = sorted(filtered_result, key=lambda x : x["total_score"], reverse=True)
-        # print(stage1_final_result)
         # 順位を振りなおす
         for rank, rec_movie in enumerate(stage1_final_result):
             rec_movie["rank"] = rank + 1
