@@ -1,4 +1,5 @@
 from typing import Any, Dict
+import time
 from utils.LLM import LLM
 from .BaseQuestionGenerator import BaseQuestionGenerator
 from .QuestionContext import QuestionContext
@@ -26,6 +27,46 @@ class UnMismatchQuestionGenerator(BaseQuestionGenerator):
         temperature=self.TEMPERATURE,
     )
     return response
+
+
+  def generate_unmismatch_questions(self, context: QuestionContext):
+      """mismatch_resultを基に、ルールベースでユーザへの質問文を生成する"""
+      mismatch_result = context.un_mismatch_results
+
+      # 1. 導入文（最初のミスマッチ要素を軽く引用して自然な形にする例）
+      intro = "なるほど、もしかしたら推薦した映画は少しお好みとは違ったかもしれません。"
+
+      # 2. 各観点に対する質問文の生成（リスト形式）
+      question_list = []
+      for item in mismatch_result:
+        mismatch_elem = item.get("mismatch", "")
+        positive_elem = item.get("positive", "")
+        positive_examples = item.get("positive_example", [])
+
+        # 「〇〇という要素はお好みではないですか？それより△△という方が好きですか？」
+        question = (
+            f"・{mismatch_elem}はお好みではないですか？それより"
+            f"{positive_elem}の方が好みですか？"
+        )
+        # 具体例の追加
+        if positive_examples:
+          question += "\n 例えば、"
+          for pos_example in positive_examples:
+            question += f"\n ・{pos_example}"
+        question += "\n"
+        question_list.append(question)
+
+      # 3. 締め文
+      closing = "具体的にどんなストーリーや要素が好きか、自由に教えてください！"
+
+      # すべてを結合して出力形式に合わせる
+      output_parts = [intro, ""]
+      output_parts.extend(question_list)
+      output_parts.append("")
+      output_parts.append(closing)
+      full_text = "\n".join(output_parts)
+      yield full_text
+
 
   def _build_prompt(self, context: QuestionContext) -> str:
     """画像仕様に基づいたプロンプト作成"""

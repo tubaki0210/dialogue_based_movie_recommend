@@ -26,5 +26,11 @@ class QuestionManager:
     generator : FirstQuestionGenerator | MismatchQuestionGenerator | UnMismatchQuestionGenerator | FallbackQuestionGenerator = self.generators.get(mode)
     # ターン数やコンテキストの状態に応じてロジックを切り替える
 
+    if mode == "mismatch":
+      return generator.generate_mismatch_questions(context)
+
+    if mode == "not_mismatch":
+      return generator.generate_unmismatch_questions(context)
+
     # 選ばれたGeneratorのgenerate()を呼んでストリーミング（Generator）をそのまま返す
     return generator.generate(context)
