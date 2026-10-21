@@ -20,6 +20,12 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
   const [loading, setLoading] = useState<boolean>(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
+  // 【追加】タイピング演出用の文字キューと通信完了フラグ
+  const queueRef = useRef<string[]>([]);
+  const isStreamDoneRef = useRef<boolean>(false);
+
+  const inputRef = useRef<HTMLInputElement>(null)
+
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   };
@@ -27,6 +33,38 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
   useEffect(() => {
     scrollToBottom();
   }, [messages, loading]);
+
+  useEffect(() => {
+    if (!loading) {
+      inputRef.current?.focus()
+    }
+  },[loading])
+
+  // 【追加】タイピング描画ループ（15msごとにキューから1文字ずつ画面に追加）
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (queueRef.current.length > 0) {
+        const nextChar = queueRef.current.shift();
+        if (nextChar !== undefined) {
+          setMessages((prev) => {
+            const newMsgs = [...prev];
+            const lastIdx = newMsgs.length - 1;
+            if (lastIdx < 0) return prev;
+            newMsgs[lastIdx] = {
+              ...newMsgs[lastIdx],
+              content: newMsgs[lastIdx].content + nextChar,
+            };
+            return newMsgs;
+          });
+        }
+      } else if (isStreamDoneRef.current && loading) {
+        // 通信が完了し、かつキューの文字をすべて表示し切ったら完了状態にする
+        setLoading(false);
+      }
+    }, 15); // 描画速度（15ms ≒ 1文字あたり約0.015秒）。お好みで調整可能です
+
+    return () => clearInterval(timer);
+  }, [loading]);
 
   const handleSendMessage = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -40,6 +78,11 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
       { role: "user", content: userMsg },
       { role: "system", content: "" },
     ]);
+
+
+    // キューと完了フラグの初期化
+    queueRef.current = [];
+    isStreamDoneRef.current = false;
     setLoading(true);
 
     try {
@@ -73,15 +116,8 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
             try {
               const parsed = JSON.parse(dataStr);
               if (parsed.content) {
-                setMessages((prev) => {
-                  const newMsgs = [...prev];
-                  const lastIdx = newMsgs.length - 1;
-                  newMsgs[lastIdx] = {
-                    ...newMsgs[lastIdx],
-                    content: newMsgs[lastIdx].content + parsed.content,
-                  };
-                  return newMsgs;
-                });
+                // 【変更】直接 messages に足さず、1文字ずつバラしてキューに追加する
+                queueRef.current.push(...parsed.content.split(""));
               }
             } catch (jsonErr) {}
           }
@@ -90,8 +126,10 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
     } catch (error) {
       console.error(error);
       alert("通信エラーが発生しました。");
-    } finally {
       setLoading(false);
+    } finally {
+      // API通信自体が終わったことを記録（キューの文字がすべて吐き出されるとタイマー側で loading が false になります）
+      isStreamDoneRef.current = true;
     }
   };
 
@@ -125,6 +163,7 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
         <input
           type="text"
           value={input}
+          ref={inputRef}
           onChange={(e) => setInput(e.target.value)}
           placeholder="好きなジャンルや感想を入力..."
           disabled={loading}
@@ -133,7 +172,7 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
         <button
           type="submit"
           disabled={loading || !input.trim()}
-          className="bg-blue-600 text-white px-5 py.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition disabled:bg-gray-300"
+          className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition disabled:bg-gray-300"
         >
           送信
         </button>
