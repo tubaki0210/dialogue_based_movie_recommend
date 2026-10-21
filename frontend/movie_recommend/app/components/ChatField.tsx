@@ -9,22 +9,20 @@ interface Message {
 
 interface ChatViewProps {
   sessionId: string;
-  initialMessage: string;
 }
 
-export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
+export default function ChatView({ sessionId }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([
-    { role: "system", content: initialMessage },
+    { role: "system", content: "" },
   ]);
   const [input, setInput] = useState<string>("");
-  const [loading, setLoading] = useState<boolean>(false);
+  const [loading, setLoading] = useState<boolean>(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
 
-  // 【追加】タイピング演出用の文字キューと通信完了フラグ
   const queueRef = useRef<string[]>([]);
   const isStreamDoneRef = useRef<boolean>(false);
-
-  const inputRef = useRef<HTMLInputElement>(null)
+  const hasFetchedRef = useRef<boolean>(false);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -36,11 +34,73 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
 
   useEffect(() => {
     if (!loading) {
-      inputRef.current?.focus()
+      inputRef.current?.focus();
     }
-  },[loading])
+  }, [loading]);
 
-  // 【追加】タイピング描画ループ（15msごとにキューから1文字ずつ画面に追加）
+  // 【自動開始】コンポーネント表示時に初期質問をストリーミング取得
+  useEffect(() => {
+    if (!sessionId) {
+      return;
+    } 
+    if (hasFetchedRef.current) {
+      return
+    }
+    hasFetchedRef.current= true;
+    
+    const fetchInitQuestion = async () => {
+      queueRef.current = [];
+      isStreamDoneRef.current = false;
+      setLoading(true);
+
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/session/init-question`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId }),
+        });
+
+        if (!response.body) throw new Error("レスポンスが空です");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let done = false;
+
+        while (!done) {
+          const { value, done: doneReading } = await reader.read();
+          done = doneReading;
+          const chunkValue = decoder.decode(value, { stream: true });
+
+          const lines = chunkValue.split("\n\n");
+          for (const line of lines) {
+            const trimmedLine = line.trim();
+            if (trimmedLine.startsWith("data:")) {
+              const dataStr = trimmedLine.replace("data:", "").trim();
+              if (dataStr === "[DONE]") {
+                done = true;
+                break;
+              }
+
+              try {
+                const parsed = JSON.parse(dataStr);
+                if (parsed.content) {
+                  queueRef.current.push(...parsed.content.split(""));
+                }
+              } catch (jsonErr) {}
+            }
+          }
+        }
+      } catch (error) {
+        console.error(error);
+      } finally {
+        isStreamDoneRef.current = true;
+      }
+    };
+
+    fetchInitQuestion();
+  }, [sessionId]);
+
+  // タイピング描画ループ（15msごとに1文字出力）
   useEffect(() => {
     const timer = setInterval(() => {
       if (queueRef.current.length > 0) {
@@ -58,10 +118,9 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
           });
         }
       } else if (isStreamDoneRef.current && loading) {
-        // 通信が完了し、かつキューの文字をすべて表示し切ったら完了状態にする
         setLoading(false);
       }
-    }, 15); // 描画速度（15ms ≒ 1文字あたり約0.015秒）。お好みで調整可能です
+    }, 15);
 
     return () => clearInterval(timer);
   }, [loading]);
@@ -79,8 +138,6 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
       { role: "system", content: "" },
     ]);
 
-
-    // キューと完了フラグの初期化
     queueRef.current = [];
     isStreamDoneRef.current = false;
     setLoading(true);
@@ -116,7 +173,6 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
             try {
               const parsed = JSON.parse(dataStr);
               if (parsed.content) {
-                // 【変更】直接 messages に足さず、1文字ずつバラしてキューに追加する
                 queueRef.current.push(...parsed.content.split(""));
               }
             } catch (jsonErr) {}
@@ -128,13 +184,12 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
       alert("通信エラーが発生しました。");
       setLoading(false);
     } finally {
-      // API通信自体が終わったことを記録（キューの文字がすべて吐き出されるとタイマー側で loading が false になります）
       isStreamDoneRef.current = true;
     }
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden border rounded-xl bg-gray-50 shadow-sm">
+    <div className="flex flex-col flex-1 w-6xl overflow-hidden border rounded-xl bg-gray-50 shadow-sm">
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg, idx) => (
           <div
@@ -161,9 +216,9 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
 
       <form onSubmit={handleSendMessage} className="p-3 bg-white border-t flex gap-2 rounded-b-xl">
         <input
+          ref={inputRef}
           type="text"
           value={input}
-          ref={inputRef}
           onChange={(e) => setInput(e.target.value)}
           placeholder="好きなジャンルや感想を入力..."
           disabled={loading}
