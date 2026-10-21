@@ -1,3 +1,4 @@
+import numpy as np
 from .ease_recommend_main import EASEPredictor
 from .content_base import ContentBasePredictor
 from .llm_recommend import LLMReranker
@@ -56,19 +57,35 @@ class RecommendManager:
             ):
         # 協調フィルタリング
         cf_recommend_result = self.ease_predictor.recommend(user_watch_history, self.TOP_NUM_FINAL)
-        # print(cf_recommend_result[:50])
         # コンテンツベースフィルタリング
         cb_recommend_result = self.content_base_predictor.get_all_raw_scores(short_term_like_str, short_term_dislike_str)
-        # print(cb_recommend_result[:50])
         # 協調フィルタリングとコンテンツベースフィルタリングの結果を足して、ソート
-        filtered_result = [m for m in cf_recommend_result if m.get("title") not in already_recommend_set]
-        # print(filtered_result[:50])
+        filtered_result = [
+            m for m in cf_recommend_result 
+            if m.get("title") not in already_recommend_set and not np.isneginf(m["cf_score"])
+        ]
+
+        # -inf を除外した有限なスコアのみを抽出
+        valid_cf_scores = [m["cf_score"] for m in filtered_result if np.isfinite(m["cf_score"])]
+        cf_min, cf_max = min(valid_cf_scores), max(valid_cf_scores)
+
         for rec_movie in filtered_result:
-            movie_id = rec_movie.get("movie_id")
             cf_score = rec_movie["cf_score"]
+            # 2. CFスコアをそのユーザー内で 0.0 〜 1.0 に正規化（相対評価に変換）
+            if cf_max == cf_min:
+                norm_cf = 0.5  # 全スコア同値の回避
+            else:
+                norm_cf = (cf_score - cf_min) / (cf_max - cf_min)
+            rec_movie["cf_score_normalized"] = norm_cf
+            
+            movie_id = rec_movie.get("movie_id")
             cb_score = cb_recommend_result.get(movie_id, 0.0)
             rec_movie["cb_score"] = cb_score
-            rec_movie["total_score"] = (self.CF_PARAM * cf_score) + (self.CB_PARAM * cb_score)
+
+            cf_multiplier = 0.95 + (norm_cf * 0.1)
+            
+            rec_movie["total_score"] = cb_score * cf_multiplier
+
         stage1_final_result = sorted(filtered_result, key=lambda x : x["total_score"], reverse=True)
         # print(stage1_final_result)
         # 順位を振りなおす
