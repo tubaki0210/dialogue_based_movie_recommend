@@ -149,7 +149,7 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
               }`}
             >
               {msg.content || (loading && idx === messages.length - 1 ? (
-                <span className="animate-pulse text-gray-400">考え中...</span>
+                <span className="animate-pulse text-gray-400">システムが応答を生成中...</span>
               ) : (
                 ""
               ))}
@@ -165,7 +165,7 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
           value={input}
           ref={inputRef}
           onChange={(e) => setInput(e.target.value)}
-          placeholder="好きなジャンルや感想を入力..."
+          placeholder="好みや嫌いな要素を入力"
           disabled={loading}
           className="flex-1 border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
         />

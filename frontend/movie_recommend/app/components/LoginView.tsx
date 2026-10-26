@@ -41,14 +41,14 @@ export default function LoginView({ onSessionStarted }: LoginViewProps) {
     <div className="flex flex-col justify-center items-center flex-1">
       <form onSubmit={handleStartSession} className="w-full max-w-md flex flex-col gap-4 p-6 border rounded-xl shadow-md bg-gray-50">
         <label className="text-sm font-semibold text-gray-700">
-          ユーザーIDを入力してください：
+          学籍番号を入力してください
         </label>
         <input
           type="text"
           value={userId}
           onChange={(e) => setUserId(e.target.value)}
           className="border p-2 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-          placeholder="例: 147288"
+          placeholder="例: al21114"
           required
         />
         <button
