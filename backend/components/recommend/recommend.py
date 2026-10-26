@@ -32,7 +32,9 @@ class RecommendManager:
             user_watch_history, 
             already_recommend_set, 
             short_term_like_str, 
-            short_term_dislike_str
+            short_term_dislike_str,
+            short_term_like_list,
+            short_term_dislike_list
             )
 
         # 2段階目(LLM)
@@ -51,12 +53,14 @@ class RecommendManager:
             user_watch_history, 
             already_recommend_set, 
             short_term_like_str, 
-            short_term_dislike_str
+            short_term_dislike_str,
+            short_term_like_list,
+            short_term_dislike_list
             ):
         # 協調フィルタリング
         cf_recommend_result = self.ease_predictor.recommend(user_watch_history, self.TOP_NUM_FINAL)
         # コンテンツベースフィルタリング
-        cb_recommend_result = self.content_base_predictor.get_all_raw_scores(short_term_like_str, short_term_dislike_str)
+        cb_recommend_result = self.content_base_predictor.get_all_raw_scores(short_term_like_list, short_term_dislike_list)
         # 協調フィルタリングとコンテンツベースフィルタリングの結果を足して、ソート
         filtered_result = [
             m for m in cf_recommend_result 
