@@ -6,7 +6,6 @@ import ChatField from "./components/ChatField";
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
-  const [initialMessage, setInitialMessage] = useState<string>("");
 
 
   return (
@@ -24,7 +23,7 @@ export default function Home() {
           />
         </div>
       ) : (
-        <ChatField sessionId={sessionId} initialMessage={initialMessage} />
+        <ChatField sessionId={sessionId}/>
       )}
     </main>
   );
