@@ -1,21 +1,19 @@
 import json, re
 from utils.LLM import LLM
+from utils.parse_json_response import parse_json_response
 class ExtractUserPreferences:
     SYSTEM_ROLE = "あなたは対話型映画推薦システムにおいて、対話履歴と現在のユーザーの嗜好情報をもとにユーザーの今の好み/避ける要素を考えるアシスタントです"
     TEMPERATURE = 0.3
-    # MODEL = "gpt-4.1-mini-2025-04-14"
     MODEL = "gpt-6-luna"
+    REASONING_LEVEL = "none"
 
     def __init__(self, llm_client : LLM):
         self.llm_client = llm_client
 
     def extract_user_preferences(self, current_turn_input_str, dialogue, current_short_term_like_list, current_short_term_dislike_list):
         prompt = self._build_extract_prompt(current_turn_input_str, dialogue, current_short_term_like_list, current_short_term_dislike_list)
-        # print(prompt)
-        response = self.llm_client.generate_response(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE)
-        print(response)
-        return json.loads(response)
-        return self._parse_json_response(response)
+        response = self.llm_client.generate_response(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE, self.REASONING_LEVEL)
+        return parse_json_response(response)
 
     def _build_extract_prompt(self, user_input, dialogue, current_short_term_like_list, current_short_term_dislike_list):
         taskDefinition = (
@@ -34,7 +32,7 @@ class ExtractUserPreferences:
         "出力例：\n"
         "{\n"
         '   "like": ["派手なアクション", "銃撃戦", "キャラクターの成長"],\n'
-        '   "dislike: ["感動", "コメディ"]\n'
+        '   "dislike": ["感動", "コメディ"]\n'
         "}\n"
         # "```\n"
     )
