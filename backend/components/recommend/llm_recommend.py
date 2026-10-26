@@ -14,8 +14,9 @@ init = "あなたはユーザと対話を行い、ユーザの好みを引き出
 class LLMReranker:
     SYSTEM_ROLE = "あなたは、ユーザーの嗜好に合った映画を推薦するアシスタントです。"
     TEMPERATURE = 0.7
-    # MODEL = "gpt-4.1-mini-2025-04-14"
     MODEL = "gpt-6-luna"
+    REASONING_LEVEL = "low"
+
     def __init__(self, movie_metadata, llm_client : LLM):
         self.movie_metadata = movie_metadata
         self.llm_client = llm_client
@@ -43,7 +44,8 @@ class LLMReranker:
             self.SYSTEM_ROLE, 
             prompt, 
             self.MODEL, 
-            self.TEMPERATURE
+            self.TEMPERATURE,
+            self.REASONING_LEVEL
             )
         
         return response

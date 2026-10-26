@@ -5,24 +5,26 @@ class LLM:
         self.key = key
         self.client = OpenAI(api_key=key)
 
-    def generate_response(self, role, prompt, model="gpt-4.1-mini-2025-04-14", temperature=0.5):
+    def generate_response(self, role, prompt, model="gpt-4.1-mini-2025-04-14", temperature=0.5, reasoning_level="medium"):
         response = self.client.responses.create(
             model = model,
             input = [
                 {"role" : "system", "content" : role},
                 {"role" : "user", "content"  : prompt}
             ],
+            reasoning={"effort" : reasoning_level} 
             # temperature=temperature
         )
         return response.output_text.replace('　','').replace(' ','')
 
-    def generate_response_stream(self,role, prompt, model="gpt-4.1-mini-2025-04-14" ,temperature=0.5):
+    def generate_response_stream(self,role, prompt, model="gpt-4.1-mini-2025-04-14" ,temperature=0.5, reasoning_level="medium"):
         response = self.client.responses.create(
             model = model,
             input = [
                 {"role" : "system", "content" : role},
                 {"role" : "user", "content"  : prompt}
             ],
+            reasoning={"effort" : reasoning_level} ,
             stream=True,
             # temperature=temperature
         )

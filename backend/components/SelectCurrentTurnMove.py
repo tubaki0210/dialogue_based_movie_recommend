@@ -3,10 +3,8 @@ from utils.LLM import LLM
 class SelectCurrentTurnMove:
       # クラス変数
     SYSTEM_ROLE = "あなたは対話型映画推薦システムにおいて、現在のターンでシステムが取るべき対話行為を適切に判断するアシスタントです"
-    # MODEL = "gpt-4.1-mini-2025-04-14"
-    # MODEL = "gpt-4o-mini-2024-07-18"
     MODEL = "gpt-6-luna"
-
+    REASONING_LEVEL = "none"
     TEMPERATURE = 0.3  # 推論の論理的整合性を保つため低めに設定
     
     def __init__(self, llm_client : LLM):
@@ -14,7 +12,7 @@ class SelectCurrentTurnMove:
 
     def select_move(self, dialogue, move_history):
         prompt = self._build_prompt(dialogue, move_history)
-        response = self.llm_client.generate_response(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE)
+        response = self.llm_client.generate_response(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE, self.REASONING_LEVEL)
         return response
 
     def _build_prompt(self, dialogue, move_history):

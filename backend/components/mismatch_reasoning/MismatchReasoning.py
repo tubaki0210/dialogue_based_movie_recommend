@@ -8,8 +8,8 @@ class MismatchReasoning:
 
   # クラス変数
   SYSTEM_ROLE = "あなたは対話型映画推薦システムにおいて、ユーザーの嗜好と映画特徴の『解釈のズレ（ミスマッチ）』を精密に推論・分析する専門アナリストです。"
-  # MODEL = "gpt-4.1-mini-2025-04-14"
   MODEL = "gpt-6-luna"
+  REASONING_LEVEL = "medium"
 
   TEMPERATURE = 0.3  # 推論の論理的整合性を保つため低めに設定
 
@@ -50,8 +50,8 @@ class MismatchReasoning:
         prompt=prompt,
         model=self.MODEL,
         temperature=self.TEMPERATURE,
+        reasoning_level=self.REASONING_LEVEL
     )
-    print(response)
     if response == "not_mismatch":
       return { "status" : "not_mismatch" }
     

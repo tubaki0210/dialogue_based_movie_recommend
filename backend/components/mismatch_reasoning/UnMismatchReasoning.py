@@ -8,9 +8,8 @@ class UnMismatchReasoning:
 
     # クラス変数
     SYSTEM_ROLE = "あなたは対話型映画推薦システムにおいて、ユーザーが好まなかったと思われる要素を精密に推論・分析する専門アナリストです。"
-    # MODEL = "gpt-4.1-mini-2025-04-14"
     MODEL = "gpt-6-luna"
-
+    REASONING_LEVEL = "medium"
     TEMPERATURE = 0.3  # 推論の論理的整合性を保つため低めに設定
 
     def __init__(self, llm_client: LLM):
@@ -117,6 +116,7 @@ class UnMismatchReasoning:
             prompt=prompt,
             model=self.MODEL,
             temperature=self.TEMPERATURE,
+            reasoning_level=self.REASONING_LEVEL
         ).strip()
 
         # レスポンスが 'none' の場合の処理

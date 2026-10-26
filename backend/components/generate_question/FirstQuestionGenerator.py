@@ -3,8 +3,9 @@ from utils.LLM import LLM
 class FirstQuestionGenerator(BaseQuestionGenerator):
     SYSTEM_ROLE = "あなたは対話型映画推薦システムにおいて、ユーザーの好みを引き出すための質問をするアシスタントです。"
     TEMPERATURE = 1.0
-    # MODEL = "gpt-4.1-mini-2025-04-14"
     MODEL = "gpt-6-luna"
+    REASONING_LEVEL = "low"
+
 
 
     def __init__(self, llm_client : LLM):
@@ -14,8 +15,7 @@ class FirstQuestionGenerator(BaseQuestionGenerator):
         long_like_preferences_str = "、".join(context.long_term_like)
         long_dislike_preferences_str = "、".join(context.long_term_dislike)
         prompt = self._build_prompt(long_like_preferences_str, long_dislike_preferences_str)
-        # print(prompt)
-        response = self.llm_client.generate_response_stream(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE)
+        response = self.llm_client.generate_response_stream(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE, self.REASONING_LEVEL)
         return response
 
     def _build_prompt(

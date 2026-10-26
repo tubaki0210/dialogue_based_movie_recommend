@@ -10,6 +10,7 @@ class FallbackQuestionGenerator(BaseQuestionGenerator):
   # MODEL = "gpt-4.1-mini-2025-04-14"
   MODEL = "gpt-6-luna"
   TEMPERATURE = 0.5
+  REASONING_LEVEL = "medium"
 
   def __init__(self, llm_client : LLM):
     self.llm_client = llm_client
@@ -23,13 +24,13 @@ class FallbackQuestionGenerator(BaseQuestionGenerator):
         prompt=prompt,
         model=self.MODEL,
         temperature=self.TEMPERATURE,
+        reasoning_level=self.REASONING_LEVEL
     )
     return response
 
   def _build_prompt(self, context: QuestionContext):
     short_term_like = context.short_term_like
     short_term_dislike = context.short_term_dislike
-    long_term_like = context.long_term_like
     long_term_dislike = context.long_term_dislike
     prompt = f"""\
         ## タスク
