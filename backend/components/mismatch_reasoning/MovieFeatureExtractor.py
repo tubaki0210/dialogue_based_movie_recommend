@@ -7,7 +7,7 @@ class MovieFeatureExtractor:
 
   # クラス変数としての設定値
   SYSTEM_ROLE = "あなたは映画の推薦テキストから、作品ごとの重要な特徴や要素を的確に抽出・構造化する専門アシスタントです。"
-  MODEL = "gpt-4o-mini-2024-07-18"
+  MODEL = "gpt-6-luna"
   TEMPERATURE = 0.2  # 事実に基づく抽出のため低めの設定
   REASONING_LEVEL = "none"
   
