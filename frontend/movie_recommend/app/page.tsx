@@ -6,20 +6,25 @@ import ChatField from "./components/ChatField";
 
 export default function Home() {
   const [sessionId, setSessionId] = useState<string | null>(null);
+  const [initialMessage, setInitialMessage] = useState<string>("");
+
 
   return (
-    <main className="flex flex-col h-screen max-w-6xl mx-auto p-4 font-sans bg-white">
-      <header className="py-2 border-b mb-4">
-        <h1 className="text-xl font-bold text-center text-gray-800">対話型映画推薦システム</h1>
+<main className="flex flex-col h-screen w-full font-sans bg-white overflow-hidden">
+      <header className="py-3 border-b text-center shrink-0">
+        <h1 className="text-xl font-bold text-gray-800">対話型映画推薦システム</h1>
       </header>
+      
       {!sessionId ? (
-        <LoginView
-          onSessionStarted={(sid) => {
-            setSessionId(sid);
-          }}
-        />
+        <div className="flex-1 flex items-center justify-center">
+          <LoginView
+            onSessionStarted={(sid) => {
+              setSessionId(sid);
+            }}
+          />
+        </div>
       ) : (
-        <ChatField sessionId={sessionId} />
+        <ChatField sessionId={sessionId} initialMessage={initialMessage} />
       )}
     </main>
   );
