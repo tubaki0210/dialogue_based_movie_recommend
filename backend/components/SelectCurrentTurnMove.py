@@ -10,12 +10,12 @@ class SelectCurrentTurnMove:
     def __init__(self, llm_client : LLM):
         self.llm_client = llm_client
 
-    def select_move(self, dialogue, move_history):
-        prompt = self._build_prompt(dialogue, move_history)
+    def select_move(self, user_input, dialogue, move_history):
+        prompt = self._build_prompt(user_input, dialogue, move_history)
         response = self.llm_client.generate_response(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE, self.REASONING_LEVEL)
         return response
 
-    def _build_prompt(self, dialogue, move_history):
+    def _build_prompt(self, user_input, dialogue, move_history):
         format_dialogue = [f"[{utt['role']}]: {utt['content']}" for utt in dialogue]
         join_dialogue = "\n".join(format_dialogue)
         format_move_history = ""
@@ -35,6 +35,9 @@ class SelectCurrentTurnMove:
 
 ## 対話履歴
 {join_dialogue}
+
+## 現在のターンのユーザーの発言
+{user_input}
 
 ## 対話行為の履歴
 {format_move_history}

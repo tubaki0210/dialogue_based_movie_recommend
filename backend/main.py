@@ -306,7 +306,7 @@ async def chat_endpoint(req: ChatMessageRequest):
     # context.short_term_dislike = session_data.get("short_term_dislike") or []
 
     # 6. 今ターンのアクション (Current Turn Move) を選定
-    current_turn_move = current_move_selector.select_move(dialogue_list, move_history)
+    current_turn_move = current_move_selector.select_move(user_input, dialogue_list, move_history)
     move_history.append(current_turn_move)
 
     # 7. Moveに応じた処理分岐とジェネレータの取得
@@ -392,6 +392,16 @@ async def chat_endpoint(req: ChatMessageRequest):
             "already_recommend": list(already_recommend),
             "move_history": move_history
         }).eq("id", session_id).execute()
+
+
+        # 4. 今回のユーザー発言を dialogue_list に追加 ＆ chat_messages へ保存
+        dialogue_list.append({"role": "user", "content": user_input})
+        supabase.table("chat_messages").insert({
+            "session_id": session_id,
+            "role": "user",
+            "category": None,
+            "content": user_input
+        }).execute()
 
         # システム応答を chat_messages テーブルへ保存
         supabase.table("chat_messages").insert({
