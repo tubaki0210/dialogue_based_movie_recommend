@@ -134,49 +134,55 @@ export default function ChatView({ sessionId, initialMessage }: ChatViewProps) {
   };
 
   return (
-    <div className="flex flex-col flex-1 overflow-hidden border rounded-xl bg-gray-50 shadow-sm">
+<div className="flex flex-col flex-1 w-full overflow-hidden bg-gray-50">
+      {/* メッセージ一覧エリア（ここがスクロールする） */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
-        {messages.map((msg, idx) => (
-          <div
-            key={idx}
-            className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-          >
+        <div className="max-w-4xl mx-auto w-full space-y-4">
+          {messages.map((msg, idx) => (
             <div
-              className={`max-w-[80%] p-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${
-                msg.role === "user"
-                  ? "bg-blue-600 text-white rounded-br-none"
-                  : "bg-white border border-gray-200 text-gray-800 rounded-bl-none"
-              }`}
+              key={idx}
+              className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
-              {msg.content || (loading && idx === messages.length - 1 ? (
-                <span className="animate-pulse text-gray-400">システムが応答を生成中...</span>
-              ) : (
-                ""
-              ))}
+              <div
+                className={`max-w-[80%] p-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white rounded-br-none"
+                    : "bg-white border border-gray-200 text-gray-800 rounded-bl-none"
+                }`}
+              >
+                {msg.content || (loading && idx === messages.length - 1 ? (
+                  <span className="animate-pulse text-gray-400">システムが応答を生成中...</span>
+                ) : (
+                  ""
+                ))}
+              </div>
             </div>
-          </div>
-        ))}
-        <div ref={messagesEndRef} />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
-      <form onSubmit={handleSendMessage} className="p-3 bg-white border-t flex gap-2 rounded-b-xl">
-        <input
-          type="text"
-          value={input}
-          ref={inputRef}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="好みや嫌いな要素を入力"
-          disabled={loading}
-          className="flex-1 border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
-        />
-        <button
-          type="submit"
-          disabled={loading || !input.trim()}
-          className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition disabled:bg-gray-300"
-        >
-          送信
-        </button>
-      </form>
+      {/* 入力欄エリア（画面下部に固定） */}
+      <div className="bg-white border-t p-3 shrink-0">
+        <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex gap-2">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            placeholder="好みや嫌いな要素を入力"
+            disabled={loading}
+            className="flex-1 border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+          />
+          <button
+            type="submit"
+            disabled={loading || !input.trim()}
+            className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition disabled:bg-gray-300"
+          >
+            送信
+          </button>
+        </form>
+      </div>
     </div>
   );
 }
