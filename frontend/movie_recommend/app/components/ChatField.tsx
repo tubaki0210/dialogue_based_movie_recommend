@@ -194,17 +194,17 @@ export default function ChatView({ sessionId }: ChatViewProps) {
       {/* メッセージ一覧エリア（ここだけが縦スクロールする） */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* 大画面でも横に広がりすぎないよう、中身を中央寄せしつつ最大幅を制限 */}
-        <div className="max-w-4xl mx-auto w-full space-y-4">
+        <div className="max-w-5xl mx-auto w-full space-y-4">
           {messages.map((msg, idx) => (
             <div
               key={idx}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] p-3.5 rounded-2xl text-sm leading-relaxed whitespace-pre-wrap shadow-sm ${
+                className={`max-w-[80%] p-4 rounded-2xl leading-relaxed whitespace-pre-wrap shadow-sm ${
                   msg.role === "user"
-                    ? "bg-blue-600 text-white rounded-br-none"
-                    : "bg-white border border-gray-200 text-gray-800 rounded-bl-none"
+                    ? "bg-blue-600 text-white"
+                    : "bg-white border border-gray-200 text-gray-800"
                 }`}
               >
                 {msg.content || (loading && idx === messages.length - 1 ? (
@@ -220,7 +220,7 @@ export default function ChatView({ sessionId }: ChatViewProps) {
       </div>
 
       {/* 入力フォームエリア（画面下部に固定） */}
-      <div className="bg-white border-t p-3 shrink-0">
+      <div className="bg-white border-t p-5 shrink-0">
         <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex gap-2">
           <input
             type="text"

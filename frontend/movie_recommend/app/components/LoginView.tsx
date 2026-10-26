@@ -39,7 +39,7 @@ export default function LoginView({ onSessionStarted }: LoginViewProps) {
   return (
     <div className="flex flex-col justify-center items-center flex-1">
       <form onSubmit={handleStartSession} className="w-full max-w-md flex flex-col gap-4 p-6 border rounded-xl shadow-md bg-gray-50">
-        <label className="text-sm font-semibold text-gray-700">
+        <label className="font-semibold text-gray-700">
           学籍番号を入力してください
         </label>
         <input
@@ -55,7 +55,7 @@ export default function LoginView({ onSessionStarted }: LoginViewProps) {
           disabled={loading}
           className="bg-blue-600 text-white p-2.5 rounded-lg font-semibold hover:bg-blue-700 transition disabled:bg-gray-400"
         >
-          {loading ? "セッション開始中..." : "チャットを開始"}
+          {loading ? "セッション開始中..." : "対話を開始"}
         </button>
       </form>
     </div>

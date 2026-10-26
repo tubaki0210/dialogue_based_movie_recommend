@@ -9,13 +9,13 @@ export default function Home() {
 
 
   return (
-<main className="flex flex-col h-screen w-full font-sans bg-white overflow-hidden">
+<main className="flex flex-col h-screen w-full font-sans bg-white overflow-hidden p-3">
       <header className="py-3 border-b text-center shrink-0">
         <h1 className="text-xl font-bold text-gray-800">対話型映画推薦システム</h1>
       </header>
       
       {!sessionId ? (
-        <div className="flex-1 flex items-center justify-center">
+        <div className="flex-1 flex items-center justify-center m-w-xl">
           <LoginView
             onSessionStarted={(sid) => {
               setSessionId(sid);
