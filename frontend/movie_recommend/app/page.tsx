@@ -23,7 +23,7 @@ export default function Home() {
           />
         </div>
       ) : (
-        <ChatField sessionId={sessionId}/>
+        <ChatField sessionId={sessionId} />
       )}
     </main>
   );
