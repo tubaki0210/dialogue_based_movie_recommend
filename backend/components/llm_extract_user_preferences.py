@@ -17,7 +17,7 @@ class ExtractUserPreferences:
         return json.loads(response)
         return self._parse_json_response(response)
 
-    def _build_extract_prompt(self, current_turn_input_str, dialogue, current_short_term_like_list, current_short_term_dislike_list):
+    def _build_extract_prompt(self, user_input, dialogue, current_short_term_like_list, current_short_term_dislike_list):
         taskDefinition = (
         "あなたのタスクは、「対話履歴」と「新たなユーザーの発話」と「映画に対する現在のユーザの好む要素と好まない要素」を基に、ユーザの映画に対する好む要素と好まない要素を推測することです。\n"
         "- 対話履歴からユーザーの好む要素と好まない要素が、より**具体的になったことが確認できる場合は必ず情報を更新してください。**\n"
@@ -57,7 +57,7 @@ class ExtractUserPreferences:
                 "--- \n"
                 "以下の情報に基づいて、タスクを実行してください。\n\n"
                 f"対話履歴：{join_dialogue}\n" 
-                # f"現在のターンのユーザ発話：{current_turn_input_str}\n"
+                f"現在のターンのユーザ発話：{user_input}\n"
                 f"ユーザが好む要素：{current_short_term_like_str}\n"
                 f"ユーザが避ける要素：{current_short_term_dislike_str}\n"
                 )
