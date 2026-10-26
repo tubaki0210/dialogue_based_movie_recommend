@@ -286,17 +286,6 @@ async def chat_endpoint(req: ChatMessageRequest):
     long_term_like = user_data["like_long_preference"]
     long_term_dislike = user_data["dislike_long_preference"]
 
-
-
-    # 4. 今回のユーザー発言を dialogue_list に追加 ＆ chat_messages へ保存
-    dialogue_list.append({"role": "user", "content": user_input})
-    supabase.table("chat_messages").insert({
-        "session_id": session_id,
-        "role": "user",
-        "category": None,
-        "content": user_input
-    }).execute()
-
     # 5. セッション状態の復元
     already_recommend = set(session_data.get("already_recommend") or [])
     move_history = session_data.get("move_history") or []
