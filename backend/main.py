@@ -119,7 +119,7 @@ embedding_client = Embeddings(api_key)
 question_manager = QuestionManager(llm_client)
 
 ease_model_path = "./components/recommend/model/ease_model_v1.pkl"
-parquet_path = "./parquet/movie_vectors.parquet"
+parquet_path = "./parquet/movie_vectors_one_element.parquet"
 movie_metadata = fetch_movies_to_dict()
 content_base_predictor = ContentBasePredictor(parquet_path, embedding_client)
 ease_predictor = EASEPredictor(ease_model_path)
