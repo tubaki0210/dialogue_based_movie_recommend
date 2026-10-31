@@ -29,6 +29,8 @@ from components.recommend.llm_recommend import LLMReranker
 from components.recommend.ease_recommend_main import EASEPredictor
 from components.SelectCurrentTurnMove import SelectCurrentTurnMove
 from components.llm_extract_user_preferences import ExtractUserPreferences
+from components.extract_feature_hint import FeatureHintExtractor
+from utils.load_embedding import load_feature_embedding_dict
 
 # .env の読み込み
 env_path = Path(__file__).parent / ".env"
@@ -132,6 +134,9 @@ movie_feature_combiner = CommonFeatureExtractor(embedding_client)
 mismatch_predictor = MismatchReasoning(llm_client)
 un_sim_extractor = ExtractUnSimCluster(embedding_client)
 un_mismatch_extractor = UnMismatchReasoning(llm_client)
+
+features_to_embedding_dict = load_feature_embedding_dict(parquet_path)
+hint_extractor = FeatureHintExtractor(movie_metadata, features_to_embedding_dict)
 
 
 
@@ -290,6 +295,9 @@ async def chat_endpoint(req: ChatMessageRequest):
     already_recommend = set(session_data.get("already_recommend") or [])
     move_history = session_data.get("move_history") or []
 
+    # ミスマッチ推論時のヒント
+    mismatch_hints = session_data.get("mismatch_hint", [])
+
     context = QuestionContext(user_profile=user_data)
     # context.short_term_like = session_data.get("short_term_like") or []
     # context.short_term_dislike = session_data.get("short_term_dislike") or []
@@ -311,7 +319,7 @@ async def chat_endpoint(req: ChatMessageRequest):
         )
         context.update_short_term_preference(result_preferences)
 
-        raw_stream_generator = recommend_manager.recommend(
+        raw_stream_generator, stage1_candidate, short_term_like_vec = recommend_manager.recommend(
                     watch_record,
                     already_recommend,
                     context.short_term_like,
@@ -321,6 +329,8 @@ async def chat_endpoint(req: ChatMessageRequest):
                 )
         # 【追加】recommend の場合のみ『ID』を『タイトル』に置換するジェネレータでラップ
         stream_generator = replace_id_to_title_stream(raw_stream_generator, movie_metadata)
+
+
 
     elif current_turn_move == "mismatch_question":
         recent_rec = extract_recent_recommend_response(dialogue_list)
@@ -373,13 +383,25 @@ async def chat_endpoint(req: ChatMessageRequest):
         if current_turn_move == "recommend":
             rec_movie_set = extract_recommend_title(full_system_res)
             already_recommend.update(rec_movie_set)
+             # ミスマッチ推論時のヒント抽出
+            movie_ids = [movie["movie_id"] for movie in stage1_candidate if movie["title"] not in rec_movie_set]
+            matched_feature = hint_extractor.extract_hints(
+                movie_ids,
+                short_term_like_vec,
+                context.short_term_like,
+                top_n_per_pref=20,
+                min_similarity=0.50,
+                max_similarity=0.80,
+                intra_similarity_threshold=0.80
+            )
 
         # Supabaseの chat_sessions テーブル状態を更新
         supabase.table("chat_sessions").update({
             "short_term_like": context.short_term_like,
             "short_term_dislike": context.short_term_dislike,
             "already_recommend": list(already_recommend),
-            "move_history": move_history
+            "move_history": move_history,
+            "mismatch_hint": matched_feature
         }).eq("id", session_id).execute()
 
 

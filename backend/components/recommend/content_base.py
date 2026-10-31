@@ -104,4 +104,4 @@ class ContentBasePredictor:
                 like_score = float(like_scores_series.get(m_id_int, 0.0))
                 raw_scores[m_id_int] = like_score
 
-        return raw_scores
+        return raw_scores, like_vecs
