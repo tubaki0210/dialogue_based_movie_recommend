@@ -15,50 +15,84 @@ class ExtractUserPreferences:
         response = self.llm_client.generate_response(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE, self.REASONING_LEVEL)
         return parse_json_response(response)
 
-    def _build_extract_prompt(self, user_input, dialogue, current_short_term_like_list, current_short_term_dislike_list):
-        taskDefinition = (
-        "あなたのタスクは、「対話履歴」と「新たなユーザーの発話」と「映画に対する現在のユーザの好む要素と好まない要素」を基に、ユーザの映画に対する好む要素と好まない要素を推測することです。\n"
-        "- 対話履歴からユーザーの好む要素と好まない要素が、より**具体的になったことが確認できる場合は必ず情報を更新してください。**\n"
-        "- 絶対にsystem側の発話からは嗜好を抽出しないでください。\n"
-        "- userの発話の中で言及されていない要素を勝手に好みと好まない要素として捉えないでください。**\n"
-        "- 映画のタイトルは含めないでください。\n"
-        "出力形式：\n"
-        "必ず下記の**JSON形式**で出力してください。その他のテキストは一切含めないでください。\n"
-        # "```json\n"
-        "{\n"
-        '  "like": ["キーフレーズ１", "キーフレーズ２", ...],\n'
-        '  "dislike": ["キーフレーズ３", "キーフレーズ４", ...]\n'
-        "}\n"
-        "出力例：\n"
-        "{\n"
-        '   "like": ["派手なアクション", "銃撃戦", "キャラクターの成長"],\n'
-        '   "dislike": ["感動", "コメディ"]\n'
-        "}\n"
-        # "```\n"
-    )
-        thinkingHints = (
-        "1. フレーズの塊: 関連性の高い嗜好要素（例:「スリリングなアクション」）は分割せず、1つの嗜好フレーズとして抽出してください。独立した要素（例:「不思議な世界観」と「感動する」）は分けてください。\n"
-        "2. 各要素は短く簡潔にしてください。"
-        "3. 具体化: 既存の嗜好が最新の対話で具体的になった（例:「感動する」から「温かさや希望を感じる感動」へ）場合は、より具体的な表現に**上書き**してください。\n"
-        "4. 「やっぱり銃撃戦よりカーチェイス」などと変更があった場合には、該当要素を正確に書き換えてください。"
-        "5. 曖昧な表現の除外: 「面白い」映画といった表現は嗜好として抽出しないでください。\n"
-        "6. 「映画」や「要素」という不要な言葉はつけないでください。例えば、「派手なアクション映画が観たい」なら「派手なアクション」と判断してください。「感動要素」なら「感動」と判断してください。"
-    )
-        current_short_term_like_str = "、".join(current_short_term_like_list)
-        current_short_term_dislike_str = "、".join(current_short_term_dislike_list)
+    def _build_extract_prompt(self, current_turn_input_str, dialogue, current_short_term_like_list, current_short_term_dislike_list):
+        current_short_term_like_str = (
+            "、".join(current_short_term_like_list)
+            if current_short_term_like_list
+            else "なし"
+        )
+        current_short_term_dislike_str = (
+            "、".join(current_short_term_dislike_list)
+            if current_short_term_dislike_list
+            else "なし"
+        )
         format_dialogue = [f"[{utt['role']}]: {utt['content']}" for utt in dialogue]
         join_dialogue = "\n".join(format_dialogue)
-        prompt = (
-                f"## タスク\n{taskDefinition}\n\n"
-                f"## タスク詳細\n{thinkingHints}\n\n"
-                "## 制約事項：出力に「映画」は付けないでください。\n"
-                "--- \n"
-                "以下の情報に基づいて、タスクを実行してください。\n\n"
-                f"対話履歴：{join_dialogue}\n" 
-                f"現在のターンのユーザ発話：{user_input}\n"
-                f"ユーザが好む要素：{current_short_term_like_str}\n"
-                f"ユーザが避ける要素：{current_short_term_dislike_str}\n"
-                )
+
+        prompt = f"""# タスク
+        あなたは映画推薦システムのユーザー嗜好抽出エンジンです。
+        「対話履歴」「最新の発話」「現在の嗜好リスト」を分析し、ユーザーの最新の「好む要素(like)」と「好まない要素(dislike)」を抽出・更新してJSON形式で出力してください。
+
+        # 抽出ルール
+        1. **ユーザー発話のみを対象にする**
+        - [system]の発話から嗜好を抽出してはいけません。
+        - ユーザーが発言していない要素を推測で補わないでください。
+
+        2. **フレーズの「分割」と「統合」の判断基準（最重要）**
+        - **【統合する（1つのフレーズにする）ケース】**
+            - 「修飾語 ＋ 要素」の関係であり、要素の性質や特徴を表している場合。
+            - 例: 「スリリングなアクション」「近未来のSF」「ダークな世界観」「重厚なミステリー」
+        - **【分割する（別々のフレーズにする）ケース】**
+            - 「ジャンル/感情/トーン」など、独立した異なる概念が組み合わさっている場合。
+            - 例: 「感動するアクション」 → 「感動」「アクション」に分割
+            - 例: 「笑えるホラー」 → 「コメディ」「ホラー」に分割
+            - 例: 「恋愛とサスペンス」 → 「恋愛」「サスペンス」に分割
+
+        3. **具体化と更新（上書き）**
+        - 既存の嗜好より具体的な発言があった場合は、具体的な表現に上書き更新してください。
+            - 例: 「アクション」がある状態で「派手なカーチェイスが好き」と言った場合 → 「派手なカーチェイス」に更新
+        - 前言撤回や変更があった場合は、該当項目を書き換えてください。
+            - 例: 「やっぱりホラーは苦手」と言った場合 → likeから「ホラー」を削り、dislikeに追加
+
+        4. **不要な語句の除外**
+        - 「映画」「要素」「作品」などの言葉は除去してください。（例: 「アクション映画」→「アクション」）
+        - 「面白い」「おすすめ」などの抽象的で意味を持たない評価表現は除外してください。
+        - 映画の固有タイトルは含めないでください。
+
+        # 分割・統合の具体例
+        - 入力: 「スリリングなアクションが見たい」
+        - 判定: 「スリリング」はアクションの修飾語
+        - like: ["スリリングなアクション"]
+        - 入力: 「感動できるアクション映画が良いな」
+        - 判定: 「感動（感情）」と「アクション（ジャンル）」は独立した概念
+        - like: ["感動", "アクション"]
+        - 入力: 「怖いのは嫌だけど、ゾンビが出てくるパニック系は好き」
+        - like: ["ゾンビ", "パニック"]
+        - dislike: ["ホラー"]
+
+        # 出力フォーマット
+        余計な解説や挨拶、Markdown記法（```json など）は一切含めず、純粋なJSON文字列のみを出力してください。
+
+        {{
+        "like": ["要素1", "要素2"],
+        "dislike": ["要素3", "要素4"]
+        }}
+
+        # 入力データ
+        ---
+        [対話履歴]
+        {join_dialogue}
+
+        [最新のユーザー発話]
+        {current_turn_input_str}
+
+        [現在の好む要素(like)]
+        {current_short_term_like_str}
+
+        [現在の避ける要素(dislike)]
+        {current_short_term_dislike_str}
+        ---
+        """
         return prompt
 
 
