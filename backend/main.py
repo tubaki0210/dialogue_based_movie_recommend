@@ -336,15 +336,24 @@ async def chat_endpoint(req: ChatMessageRequest):
         recent_rec = extract_recent_recommend_response(dialogue_list)
         features_dict = extractor.extract(recent_rec)
         common_features = movie_feature_combiner.extract_common_features(features_dict)
-
-        mismatch_reasoning_result = mismatch_predictor.infer_mismatch(
-            common_features,
+        mismatch_reasoning_result = mismatch_predictor.generate_mismatch_prompt_v2(
+            features_dict,
             context.short_term_like,
             context.short_term_dislike,
             long_term_like,
             long_term_dislike,
-            recent_recommend_res=recent_rec
+            mismatch_hints,
         )
+        print(mismatch_reasoning_result)
+        # mismatch_reasoning_result = mismatch_predictor.infer_mismatch(
+        #     common_features,
+        #     context.short_term_like,
+        #     context.short_term_dislike,
+        #     long_term_like,
+        #     long_term_dislike,
+        #     mismatch_hints,
+        #     recent_recommend_res=recent_rec
+        # )
 
         is_mismatch = mismatch_reasoning_result.get("status") == "mismatch"
         if is_mismatch:
@@ -372,6 +381,7 @@ async def chat_endpoint(req: ChatMessageRequest):
 
     # 8. SSEイベントストリームの生成関数
     async def event_generator() -> AsyncGenerator[str, None]:
+        nonlocal mismatch_hints
         full_system_res = ""
         
         # LLMの出力を1チャンクずつフロントエンドへストリーミング送信
@@ -385,7 +395,7 @@ async def chat_endpoint(req: ChatMessageRequest):
             already_recommend.update(rec_movie_set)
              # ミスマッチ推論時のヒント抽出
             movie_ids = [movie["movie_id"] for movie in stage1_candidate if movie["title"] not in rec_movie_set]
-            matched_feature = hint_extractor.extract_hints(
+            mismatch_hints = hint_extractor.extract_hints(
                 movie_ids,
                 short_term_like_vec,
                 context.short_term_like,
@@ -401,7 +411,7 @@ async def chat_endpoint(req: ChatMessageRequest):
             "short_term_dislike": context.short_term_dislike,
             "already_recommend": list(already_recommend),
             "move_history": move_history,
-            "mismatch_hint": matched_feature
+            "mismatch_hint": mismatch_hints
         }).eq("id", session_id).execute()
 
 

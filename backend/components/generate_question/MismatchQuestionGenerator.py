@@ -44,7 +44,7 @@ class MismatchQuestionGenerator(BaseQuestionGenerator):
 
         # 「〇〇という要素はお好みではないですか？それより△△という方が好きですか？」
         question = (
-            f"・{mismatch_elem}はお好みではないですか？それより"
+            f"{mismatch_elem}はお好みではないですか？それより"
             f"{positive_elem}の方が好みですか？"
         )
         # 具体例の追加
