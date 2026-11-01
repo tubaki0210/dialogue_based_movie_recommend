@@ -336,7 +336,7 @@ async def chat_endpoint(req: ChatMessageRequest):
         recent_rec = extract_recent_recommend_response(dialogue_list)
         features_dict = extractor.extract(recent_rec)
         common_features = movie_feature_combiner.extract_common_features(features_dict)
-        mismatch_reasoning_result = mismatch_predictor.generate_mismatch_prompt_v2(
+        mismatch_reasoning_result = mismatch_predictor.infer_mismatch_v2(
             features_dict,
             context.short_term_like,
             context.short_term_dislike,
@@ -345,15 +345,6 @@ async def chat_endpoint(req: ChatMessageRequest):
             mismatch_hints,
         )
         print(mismatch_reasoning_result)
-        # mismatch_reasoning_result = mismatch_predictor.infer_mismatch(
-        #     common_features,
-        #     context.short_term_like,
-        #     context.short_term_dislike,
-        #     long_term_like,
-        #     long_term_dislike,
-        #     mismatch_hints,
-        #     recent_recommend_res=recent_rec
-        # )
 
         is_mismatch = mismatch_reasoning_result.get("status") == "mismatch"
         if is_mismatch:
