@@ -175,7 +175,7 @@ class MismatchReasoning:
     return prompt
 
 # ミスマッチ推論v2(共通要素集合なし)
-  def generate_mismatch_prompt_v2(
+  def infer_mismatch_v2(
     self,
     recent_movies_features_data,
     short_term_like,
@@ -184,6 +184,39 @@ class MismatchReasoning:
     long_term_dislike,
     feature_hints_text,  # 17作品のヒント
 ):
+    prompt = self._build_prompt_v2(
+      recent_movies_features_data,
+      short_term_like,
+      short_term_dislike,
+      long_term_like,
+      long_term_dislike,
+      feature_hints_text
+    )
+        # LLMの呼び出し（ストリーミング結果を集約）
+    print(prompt)
+    response = self.llm_client.generate_response(
+        role=self.SYSTEM_ROLE,
+        prompt=prompt,
+        model=self.MODEL,
+        temperature=self.TEMPERATURE,
+        reasoning_level=self.REASONING_LEVEL
+    )
+    if response == "not_mismatch":
+      return { "status" : "not_mismatch" }
+    
+    # JSON形式にパースして返す
+    # return json.loads(response)
+    return { "status" : "mismatch", "content" : self._parse_json_response(response) }
+
+  def _build_prompt_v2(
+      self,
+      recent_movies_features_data,
+      short_term_like,
+      short_term_dislike,
+      long_term_like,
+      long_term_dislike,
+      feature_hints_text,  # 17作品のヒント
+  ):
     recent_movies_features_text = self._format_features_list(recent_movies_features_data)
     prompt = f"""\
     
@@ -259,21 +292,8 @@ class MismatchReasoning:
     }}
   ]
   """
-        # LLMの呼び出し（ストリーミング結果を集約）
-    print(prompt)
-    response = self.llm_client.generate_response(
-        role=self.SYSTEM_ROLE,
-        prompt=prompt,
-        model=self.MODEL,
-        temperature=self.TEMPERATURE,
-        reasoning_level=self.REASONING_LEVEL
-    )
-    if response == "not_mismatch":
-      return { "status" : "not_mismatch" }
+    return prompt
     
-    # JSON形式にパースして返す
-    # return json.loads(response)
-    return { "status" : "mismatch", "content" : self._parse_json_response(response) }
 
   def _format_features_list(self, recent_movies_features):
     result = []
