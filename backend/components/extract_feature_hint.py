@@ -93,7 +93,7 @@ class FeatureHintExtractor:
             score = sims[feat_idx]
 
             # 嗜好ベクトルとの類似度が max_similarity (0.80) を超えるものは無視してスキップ
-            if min_similarity <= score <= max_similarity:
+            if score < min_similarity or score > max_similarity:
                 continue
 
             feat_text = valid_texts[feat_idx]
