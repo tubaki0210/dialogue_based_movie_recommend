@@ -129,6 +129,7 @@ question_manager = QuestionManager(llm_client)
 ease_model_path = "./components/recommend/model/ease_model_series_v5_four_1000.pkl"
 parquet_path = "./parquet/movie_vectors_one_element.parquet"
 movie_metadata = fetch_movies_to_dict()
+print(movie_metadata)
 content_base_predictor = ContentBasePredictor(parquet_path, embedding_client)
 print("contentbase")
 # print(content_base_predictor.feature_embedding_dict)
