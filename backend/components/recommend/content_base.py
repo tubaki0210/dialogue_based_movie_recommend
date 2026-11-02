@@ -20,13 +20,13 @@ class ContentBasePredictor:
     # 1. pyarrow でテーブルとして直接ロード (Pandasのオーバーヘッドを回避)
     table = pq.read_table(
         self.parquet_path,
-        columns=["movie_id", "feature_vectors", "features"],
+        columns=["movie_id", "feature_vectors", "feature_texts"],
     )
 
     movie_id_col = table["movie_id"].to_pylist()
     feature_vecs_col = table["feature_vectors"].to_pylist()
     features_col = (
-        table["features"].to_pylist() if "features" in table.column_names else []
+        table["feature_texts"].to_pylist() if "feature_texts" in table.column_names else []
     )
 
     # 全映画ID
