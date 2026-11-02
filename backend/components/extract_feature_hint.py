@@ -14,12 +14,17 @@ class FeatureHintExtractor:
   def _get_candidate_features_and_vectors(self, movie_ids: list):
     """指定された20作品のIDリストから、Supabaseを介して特徴テキストとベクトル行列を取得"""
     if not movie_ids:
-      return [], np.empty((0, 1536), dtype=np.float32)
+      return [], np.empty((0, 1536), dtype=np.float16)
 
-    # ★ Supabaseの id(bigint) に合わせて int 型のリストに変換
-    int_movie_ids = [int(m_id) for m_id in movie_ids if str(m_id).isdigit()]
+    # Supabaseの id(bigint) に合わせて int 型のリストに変換
+    int_movie_ids = []
+    for m_id in movie_ids:
+      try:
+        int_movie_ids.append(int(m_id))
+      except (ValueError, TypeError):
+        continue
 
-    # 1. 上位20作品の features(jsonb) を Supabase からピンポイント一括取得
+    # 1. 上位20作品の features(jsonb) を Supabase から一括取得
     res = (
         supabase.table("movies")
         .select("id, features")
@@ -31,7 +36,9 @@ class FeatureHintExtractor:
     for row in res.data or []:
       features = row.get("features") or []
       if isinstance(features, list):
-        unique_features.update(features)
+        for f in features:
+          if f:
+            unique_features.add(str(f).strip())
 
     # 2. 特徴テキストに対応するベクトルを抽出
     valid_texts = []
@@ -43,9 +50,9 @@ class FeatureHintExtractor:
         valid_vectors.append(self.feature_embedding_dict[text])
 
     if valid_vectors:
-      feature_matrix = np.vstack(valid_vectors).astype(np.float32)
+      feature_matrix = np.vstack(valid_vectors).astype(np.float16)
     else:
-      feature_matrix = np.empty((0, 1536), dtype=np.float32)
+      feature_matrix = np.empty((0, 1536), dtype=np.float16)
 
     return valid_texts, feature_matrix
 
@@ -54,13 +61,12 @@ class FeatureHintExtractor:
       movie_ids,
       short_term_like_vecs,
       preference_labels=None,
-      top_n_per_pref=20,  # 抽出件数
+      top_n_per_pref=20,
       min_similarity=0.45,
       max_similarity=0.80,
-      intra_similarity_threshold=0.75,  # 採用済み特徴同士の類似度上限
+      intra_similarity_threshold=0.75,
   ):
     """20作品の特徴から、各短期的嗜好に合致するヒントを嗜好タグ付きで抽出"""
-    # 1. Supabase から20作品の特徴テキストとベクトル行列を取得
     valid_texts, F_matrix = self._get_candidate_features_and_vectors(
         movie_ids
     )
@@ -68,17 +74,18 @@ class FeatureHintExtractor:
     if F_matrix.shape[0] == 0 or len(short_term_like_vecs) == 0:
       return {}
 
-    # 2. コサイン類似度の一括計算 (K, M)
+    # 2. コサイン類似度の計算（float32に安全変換して計算誤差・オーバーフローを防止）
     U_like = np.array(short_term_like_vecs, dtype=np.float32)
     if U_like.ndim == 1:
       U_like = U_like.reshape(1, -1)
 
+    F_mat_32 = F_matrix.astype(np.float32)
+
     U_norm = U_like / (np.linalg.norm(U_like, axis=1, keepdims=True) + 1e-9)
-    F_norm = F_matrix / (
-        np.linalg.norm(F_matrix, axis=1, keepdims=True) + 1e-9
+    F_norm = F_mat_32 / (
+        np.linalg.norm(F_mat_32, axis=1, keepdims=True) + 1e-9
     )
 
-    # 行列積: (K, 1536) x (1536, M) -> (K, M)
     sim_matrix = np.dot(U_norm, F_norm.T)
 
     # 3. 嗜好ラベルの準備
@@ -102,18 +109,16 @@ class FeatureHintExtractor:
       for feat_idx in sorted_indices:
         score = sims[feat_idx]
 
-        # ★ 類似度が範囲外（min未満 または max超え）のものをスキップ
+        # 類似度フィルター
         if score < min_similarity or score > max_similarity:
           continue
 
         feat_text = valid_texts[feat_idx]
         feat_vec = F_norm[feat_idx]
 
-        # 既に他の嗜好で使われた特徴をスキップ（被り防止）
         if feat_text in seen_features_global:
           continue
 
-        # 同じ嗜好内で採択済みの特徴と似すぎていないかチェック
         if len(extracted_vecs_for_this_pref) > 0:
           vec_stack = np.vstack(extracted_vecs_for_this_pref)
           intra_sims = np.dot(vec_stack, feat_vec)
@@ -128,5 +133,5 @@ class FeatureHintExtractor:
           break
 
       hints_by_pref[label] = extracted_for_this_pref
-    print(hints_by_pref)
+
     return hints_by_pref

@@ -130,6 +130,7 @@ ease_model_path = "./components/recommend/model/ease_model_series_v5_four_1000.p
 parquet_path = "./parquet/movie_vectors_one_element.parquet"
 movie_metadata = fetch_movies_to_dict()
 content_base_predictor = ContentBasePredictor(parquet_path, embedding_client)
+# print(content_base_predictor.feature_embedding_dict)
 ease_predictor = EASEPredictor(ease_model_path)
 current_move_selector = SelectCurrentTurnMove(llm_client)
 pref_extractor = ExtractUserPreferences(llm_client)
@@ -142,8 +143,8 @@ un_sim_extractor = ExtractUnSimCluster(embedding_client)
 un_mismatch_extractor = UnMismatchReasoning(llm_client)
 base_line_recommender = BaseLineRecommend(llm_client)
 
-features_to_embedding_dict = load_feature_embedding_dict(parquet_path)
-hint_extractor = FeatureHintExtractor(features_to_embedding_dict)
+# features_to_embedding_dict = load_feature_embedding_dict(parquet_path)
+hint_extractor = FeatureHintExtractor(content_base_predictor.feature_embedding_dict)
 
 
 # 補助関数
