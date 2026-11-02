@@ -11,7 +11,7 @@ interface ChatViewProps {
   sessionId: string;
 }
 
-export default function ChatView({ sessionId }: ChatViewProps) {
+export default function ChatField({ sessionId }: ChatViewProps) {
   const [messages, setMessages] = useState<Message[]>([
     { role: "system", content: "" },
   ]);
