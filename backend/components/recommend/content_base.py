@@ -1,6 +1,6 @@
 import gc
 import numpy as np
-import pandas as pd
+import pyarrow.parquet as pq
 from sklearn.metrics.pairwise import cosine_similarity
 from utils.Embedding import Embeddings
 
@@ -12,47 +12,54 @@ class ContentBasePredictor:
   def __init__(self, parquet_path, embedding_client: Embeddings):
     self.parquet_path = parquet_path
     self.embedding_client = embedding_client
-    self.feature_embedding_dict = {}  # float16 のまま辞書を保持
+    self.feature_embedding_dict = {}
     self._load_parquet_data()
 
   def _load_parquet_data(self):
-    """Parquetファイルを float16 でメモリ効率よくロードし、辞書も正確に構築する"""
-    df = pd.read_parquet(self.parquet_path)
+    """pyarrow を使用して低メモリ・高速に Parquet データを展開する"""
+    # 1. pyarrow でテーブルとして直接ロード (Pandasのオーバーヘッドを回避)
+    table = pq.read_table(
+        self.parquet_path,
+        columns=["movie_id", "feature_vectors", "features"],
+    )
 
-    self.movie_ids = [int(m_id) for m_id in df["movie_id"].unique()]
+    movie_id_col = table["movie_id"].to_pylist()
+    feature_vecs_col = table["feature_vectors"].to_pylist()
+    features_col = (
+        table["features"].to_pylist() if "features" in table.column_names else []
+    )
+
+    # 全映画ID
+    self.movie_ids = list(dict.fromkeys(movie_id_col))
 
     flat_movie_ids = []
-    flat_vectors = []
+    all_vecs_list = []
 
-    for _, row in df.iterrows():
-      m_id = int(row["movie_id"])
-      f_vecs = row.get("feature_vectors")
-      features = row.get("feature_texts")
+    # 2. フラット展開処理
+    for i in range(len(movie_id_col)):
+      m_id = int(movie_id_col[i])
+      f_vecs = feature_vecs_col[i]
+      feats = features_col[i] if i < len(features_col) else None
 
       if f_vecs is not None and len(f_vecs) > 0:
-        f_arr = np.vstack(f_vecs).astype(np.float16)
+        f_arr = np.array(f_vecs, dtype=np.float16)
+        all_vecs_list.append(f_arr)
+        flat_movie_ids.extend([m_id] * len(f_arr))
 
-        for vec in f_arr:
-          flat_movie_ids.append(m_id)
-          flat_vectors.append(vec)
-
-        # ★ 修正: features（テキスト）と feature_vectors（ベクトル）を正確に1対1マッピング
-        if features is not None and len(features) == len(f_vecs):
-          for text, vec in zip(features, f_arr):
+        # 辞書の作成
+        if feats is not None and len(feats) == len(f_arr):
+          for text, vec in zip(feats, f_arr):
             if text:
               clean_text = str(text).strip()
               if clean_text not in self.feature_embedding_dict:
                 self.feature_embedding_dict[clean_text] = vec
 
+    # 3. 単一の巨大なNumPy行列へ結合
     self.flat_movie_ids = np.array(flat_movie_ids, dtype=np.int32)
-    self.all_feature_embeddings = np.vstack(flat_vectors).astype(np.float16)
+    self.all_feature_embeddings = np.vstack(all_vecs_list)
 
-    print(
-        "【ContentBasePredictor】 辞書登録完了数:"
-        f" {len(self.feature_embedding_dict)} 件"
-    )
-
-    del df, flat_vectors, flat_movie_ids
+    # 不要になったPyArrowテーブルと中間リストを即座に破棄
+    del table, movie_id_col, feature_vecs_col, features_col, all_vecs_list
     gc.collect()
 
   def get_all_raw_scores(
@@ -77,10 +84,21 @@ class ContentBasePredictor:
           like_vecs, self.all_feature_embeddings
       )
 
-      df_like = pd.DataFrame(sim_like_matrix.T, index=self.flat_movie_ids)
-      like_scores_series = df_like.groupby(level=0).max().mean(axis=1)
+      # pandasを使わずNumPyで直接グループ最大値を計算し、メモリ・計算量を削減
+      like_scores_series = {}
+      for u_idx in range(len(clean_likes)):
+        sims = sim_like_matrix[u_idx]
+        # movie_id ごとの max を高速集計
+        unq_ids, unq_inv = np.unique(self.flat_movie_ids, return_inverse=True)
+        max_sims = np.full(len(unq_ids), -np.inf, dtype=np.float16)
+        np.maximum.at(max_sims, unq_inv, sims)
+
+        for m_id, score in zip(unq_ids, max_sims):
+          like_scores_series[m_id] = (
+              like_scores_series.get(m_id, 0.0) + score / len(clean_likes)
+          )
     else:
-      like_scores_series = pd.Series(0.0, index=self.movie_ids)
+      like_scores_series = {m_id: 0.0 for m_id in self.movie_ids}
 
     if clean_dislikes:
       raw_dislike_vecs = self.embedding_client.get_embedding_byList(
@@ -92,12 +110,12 @@ class ContentBasePredictor:
           dislike_vecs, self.all_feature_embeddings
       )
 
-      df_dislike = pd.DataFrame(
-          sim_dislike_matrix.T, index=self.flat_movie_ids
-      )
-      dislike_max_series = df_dislike.groupby(level=0).max().max(axis=1)
+      unq_ids, unq_inv = np.unique(self.flat_movie_ids, return_inverse=True)
+      max_dislike_sims = np.full(len(unq_ids), -np.inf, dtype=np.float16)
+      np.maximum.at(max_dislike_sims, unq_inv, sim_dislike_matrix.max(axis=0))
+      dislike_max_series = dict(zip(unq_ids, max_dislike_sims))
     else:
-      dislike_max_series = pd.Series(0.0, index=self.movie_ids)
+      dislike_max_series = {m_id: 0.0 for m_id in self.movie_ids}
 
     raw_scores = {}
     for m_id in self.movie_ids:
