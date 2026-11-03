@@ -1,23 +1,42 @@
 import numpy as np
-
+from supabase_client import supabase
 
 class FeatureHintExtractor:
-  def __init__(self, movie_data_json, feature_embedding_dict):
+  def __init__(self, feature_embedding_dict):
     """初期化: 映画メタデータと事前ロード済みのベクトル辞書を保持
 
     :param movie_data_json: 映画データ辞書
     :param feature_embedding_dict: {feature_text: np.ndarray(1536,)} の辞書
     """
-    self.movie_data_json = movie_data_json
+    # self.movie_data_json = movie_data_json
     self.feature_embedding_dict = feature_embedding_dict
 
   def _get_candidate_features_and_vectors(self, movie_ids):
     """[ステップ2相当] 指定された映画IDリストからユニークな特徴とベクトル行列を取得"""
-    unique_features = set()
+        # Supabaseの id(bigint) に合わせて int 型のリストに変換
+    int_movie_ids = []
     for m_id in movie_ids:
-      features = self.movie_data_json.get(str(m_id), {}).get("features", [])
+      try:
+        int_movie_ids.append(int(m_id))
+      except (ValueError, TypeError):
+        continue
+
+    # 1. 上位20作品の features(jsonb) を Supabase から一括取得
+    res = (
+        supabase.table("movies")
+        .select("id, features")
+        .in_("id", int_movie_ids)
+        .execute()
+    )
+
+
+    unique_features = set()
+    for row in res.data or []:
+      features = row.get("features") or []
       if isinstance(features, list):
-        unique_features.update(features)
+        for f in features:
+          if f:
+            unique_features.add(str(f).strip())
 
     valid_texts = []
     valid_vectors = []

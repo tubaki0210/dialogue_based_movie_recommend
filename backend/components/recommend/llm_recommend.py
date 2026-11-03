@@ -1,57 +1,108 @@
-import sys
-import os
 from glob import glob
 import json
-# このファイルのディレクトリの絶対パスを取得
+import os
+from pathlib import Path
+import sys
+
+from supabase_client import supabase
+
 current_dir = os.path.dirname(os.path.abspath(__file__))
-# 親ディレクトリのパスを取得
 parent_dir = os.path.dirname(current_dir)
-# sys.pathに親ディレクトリを追加
 sys.path.append(parent_dir)
 from utils.LLM import LLM
 
 init = "あなたはユーザと対話を行い、ユーザの好みを引き出し、ユーザに合った映画を推薦するアシスタントです。"
+
+
 class LLMReranker:
-    SYSTEM_ROLE = "あなたは、ユーザーの嗜好に合った映画を推薦するアシスタントです。"
-    TEMPERATURE = 0.7
-    MODEL = "gpt-6-luna"
-    REASONING_LEVEL = "low"
 
-    def __init__(self, movie_metadata, llm_client : LLM):
-        self.movie_metadata = movie_metadata
-        self.llm_client = llm_client
+  SYSTEM_ROLE = (
+      "あなたは、ユーザーの嗜好に合った映画を推薦するアシスタントです。"
+  )
+  TEMPERATURE = 0.7
+  MODEL = "gpt-6-luna"
+  REASONING_LEVEL = "low"
 
-    def rerank(
-            self, 
-            stage1_candidates, 
-            short_term_like_str, 
-            short_term_dislike_str, 
-            long_term_like_str, 
-            long_term_dislike_str, 
-            top_num
-            ):
-        
-        prompt = self._build_recommend_prompt(
-            stage1_candidates, 
-            short_term_like_str, 
-            short_term_dislike_str, 
-            long_term_like_str, 
-            long_term_dislike_str, 
-            top_num
-            )
-        
-        response = self.llm_client.generate_response_stream(
-            self.SYSTEM_ROLE, 
-            prompt, 
-            self.MODEL, 
-            self.TEMPERATURE,
-            self.REASONING_LEVEL
-            )
-        
-        return response
+  def __init__(self, llm_client: LLM):
+    # movie_metadata には最軽量データ(id, title のみ)を保持
+    # self.movie_metadata = movie_metadata
+    self.llm_client = llm_client
 
-    def _build_recommend_prompt(self, stage1_candidates, short_term_like_str, short_term_dislike_str, long_term_like_str, long_term_dislike_str, top_num):
-        task_definition = (f"""
+  def rerank(
+
+      self,
+      stage1_candidates,
+      short_term_like_str,
+      short_term_dislike_str,
+      long_term_like_str,
+      long_term_dislike_str,
+      top_num,
+  ):
+    # 1. Top20件の movie_id に対応する詳細データ(summary, features, genre, year)を Supabase から一括取得
+    candidate_ids = [
+        str(m.get("movie_id"))
+        for m in stage1_candidates
+        if m.get("movie_id") is not None
+    ]
+    details_map = self._fetch_candidate_details(candidate_ids)
+
+    # 2. 取得した詳細情報を渡してプロンプトを作成
+    prompt = self._build_recommend_prompt(
+        stage1_candidates,
+        details_map,
+        short_term_like_str,
+        short_term_dislike_str,
+        long_term_like_str,
+        long_term_dislike_str,
+        top_num,
+    )
+
+    response = self.llm_client.generate_response_stream(
+        self.SYSTEM_ROLE,
+        prompt,
+        self.MODEL,
+        self.TEMPERATURE,
+        self.REASONING_LEVEL,
+    )
+
+    return response
+
+  def _fetch_candidate_details(self, candidate_ids: list[str]) -> dict:
+    """1次候補(上位20件)の summary, features, genre, year を Supabase からピンポイント取得"""
+    if not candidate_ids:
+      return {}
+
+    # Supabaseから必要カラムのみを絞り込んで取得
+    response = (
+        supabase.table("movies")
+        .select("id, summary, features, genre, year")
+        .in_("id", candidate_ids)
+        .execute()
+    )
+
+    details_map = {}
+    for row in response.data or []:
+      m_id = str(row.get("id"))
+      details_map[m_id] = {
+          "summary": row.get("summary") or "あらすじ情報なし",
+          "features": row.get("features") or [],
+          "genre": row.get("genre") or [],
+          "year": row.get("year") or "",
+      }
+    return details_map
+
+  def _build_recommend_prompt(
+
+      self,
+      stage1_candidates,
+      details_map,
+      short_term_like_str,
+      short_term_dislike_str,
+      long_term_like_str,
+      long_term_dislike_str,
+      top_num,
+  ):
+    task_definition = f"""
             ユーザーの短期的嗜好（今日の気分）と長期的嗜好（普段の好み）、および提供された映画の候補情報から、ユーザーが最も好むと思われる順番で{top_num}つの映画を厳選して推薦してください。
             必ず、提供された映画情報（あらすじ・特徴フレーズ）のみを用いてタスクを実行してください。
 
@@ -89,19 +140,23 @@ class LLMReranker:
             - あらすじ情報がない場合でも「あらすじはありませんが」などの謝罪や言い訳は書かないこと。
             - 提供された映画情報（あらすじ・特徴）にない情報を勝手に捏造（ハルシネーション）して語らないこと。
             - 「*」などのマークダウンや余計な記号は一切使用禁止です
-        """)
+        """
 
-        precautions = ("""
+    precautions = """
             - あらすじと映画の特徴をベースに推薦する映画を考えてください。例えば、ジャンルが記載されていますが、嗜好がジャンルにマッチするからといって安易にスコアを高くするのはやめてください
             - 推薦する映画IDは『』で囲むようにしてください。
             - 「長期的嗜好である」や「短期的嗜好である」といった表現はつけないでください。
             - 映画の公開年は映画IDの後に(例: 『○○』(2020年)のように含めてください。
             - 対話の中では「ユーザ」ではなく「あなた」と言ってください。
             - あなたが参照できるのは与えられた情報のみです。
-        """)
+        """
 
-        candidates_movie_informaiton_str = self._bulid_prompt_of_movie_information(stage1_candidates)  
-        prompt = (f"""
+    candidates_movie_informaiton_str = (
+        self._bulid_prompt_of_movie_information(
+            stage1_candidates, details_map
+        )
+    )
+    prompt = f"""
         ## タスク: {task_definition}
 
         ## 制約事項: {precautions}
@@ -116,29 +171,44 @@ class LLMReranker:
 
         ## 推薦候補の映画情報:
         {candidates_movie_informaiton_str}
-        """)
-        return prompt
+        """
+    return prompt
 
-    def _bulid_prompt_of_movie_information(self, stage1_candidates):
-        movie_information_list = []
-        for movie in stage1_candidates:
-            movie_id = str(movie.get("movie_id"))     
-            target_movie_metadata = self.movie_metadata.get(movie_id, None)
-            if target_movie_metadata is None:
-                continue
-            genre = "、".join(target_movie_metadata.get("genre"))
-            published_year = target_movie_metadata.get("year")
-            synopsis = target_movie_metadata.get("summary")
-            features = target_movie_metadata.get("features", [])
-            join_features_list = [f"・{feature}" for feature in features]
-            join_features_str = "\n".join(join_features_list)
-            movie_information_text = f"""
+  def _bulid_prompt_of_movie_information(self, stage1_candidates, details_map):
+    movie_information_list = []
+    for movie in stage1_candidates:
+      movie_id = str(movie.get("movie_id"))
+
+      # Supabaseから取得した詳細情報を参照
+      detail = details_map.get(movie_id)
+      if detail is None:
+        continue
+
+      # genre (リスト形式) を「、」で結合
+      raw_genre = detail.get("genre", [])
+      if isinstance(raw_genre, list):
+        genre = "、".join(raw_genre) if raw_genre else "情報なし"
+      else:
+        genre = str(raw_genre)
+
+      published_year = detail.get("year", "情報なし")
+      synopsis = detail.get("summary", "あらすじ情報なし")
+      features = detail.get("features", [])
+
+      join_features_list = [f"・{feature}" for feature in features]
+      join_features_str = (
+          "\n".join(join_features_list)
+          if join_features_list
+          else "・特徴情報なし"
+      )
+
+      movie_information_text = f"""
             映画ID: {movie_id}
             ジャンル: {genre}
             公開年: {published_year}
             あらすじ: {synopsis}
             映画の特徴:\n {join_features_str}
             """
-            movie_information_list.append(movie_information_text)
+      movie_information_list.append(movie_information_text)
 
-        return "\n".join(movie_information_list)
+    return "\n".join(movie_information_list)

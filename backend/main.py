@@ -70,7 +70,7 @@ def fetch_all_movies_from_supabase():
     while True:
         end = start + batch_size - 1
         response = (
-            supabase.table("movies").select("*").range(start, end).execute()
+            supabase.table("movies").select("id, title").range(start, end).execute()
         )
         rows = response.data
 
@@ -107,15 +107,6 @@ def fetch_movies_to_dict():
         movies_dict[movie_id] = {
             "movie_id": movie_id,
             "title": title,
-            "genre": row.get("genre"),
-            "year": row.get("year"),
-            "length": row.get("length"),
-            "director": row.get("director"),
-            "script": row.get("script"),
-            "actor": row.get("actor"),
-            "summary": row.get("summary"),
-            "features": row.get("features", []),
-            "style": row.get("style"),
         }
 
     return movies_dict
@@ -133,7 +124,7 @@ content_base_predictor = ContentBasePredictor(parquet_path, embedding_client)
 ease_predictor = EASEPredictor(ease_model_path)
 current_move_selector = SelectCurrentTurnMove(llm_client)
 pref_extractor = ExtractUserPreferences(llm_client)
-llm_reranker = LLMReranker(movie_metadata, llm_client)
+llm_reranker = LLMReranker(llm_client)
 recommend_manager = RecommendManager(ease_predictor, content_base_predictor, llm_reranker)
 extractor = MovieFeatureExtractor(llm_client)
 movie_feature_combiner = CommonFeatureExtractor(embedding_client)
@@ -143,7 +134,7 @@ un_mismatch_extractor = UnMismatchReasoning(llm_client)
 base_line_recommender = BaseLineRecommend(llm_client)
 
 features_to_embedding_dict = load_feature_embedding_dict(parquet_path)
-hint_extractor = FeatureHintExtractor(movie_metadata, features_to_embedding_dict)
+hint_extractor = FeatureHintExtractor(features_to_embedding_dict)
 
 
 # 補助関数
