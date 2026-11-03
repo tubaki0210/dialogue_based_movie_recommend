@@ -133,8 +133,9 @@ un_sim_extractor = ExtractUnSimCluster(embedding_client)
 un_mismatch_extractor = UnMismatchReasoning(llm_client)
 base_line_recommender = BaseLineRecommend(llm_client)
 
-features_to_embedding_dict = load_feature_embedding_dict(parquet_path)
-hint_extractor = FeatureHintExtractor(features_to_embedding_dict)
+# features_to_embedding_dict = load_feature_embedding_dict(parquet_path)
+hint_extractor = FeatureHintExtractor(content_base_predictor.feature_embedding_dict)
+
 
 
 # 補助関数
