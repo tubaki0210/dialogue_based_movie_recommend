@@ -1,7 +1,8 @@
 import json
 from typing import Any, Dict, List, Union
 from utils.LLM import LLM
-
+from utils.supabase_function import extract_movie_features_by_ids
+import numpy as np
 
 class MismatchReasoning:
   """共通要素とユーザーの嗜好情報から、解釈のズレ（ミスマッチ）と対照的な要素を推論するクラス"""
@@ -10,11 +11,13 @@ class MismatchReasoning:
   SYSTEM_ROLE = "あなたは対話型映画推薦システムにおいて、ユーザーの嗜好と映画特徴の『解釈のズレ（ミスマッチ）』を精密に推論・分析する専門アナリストです。"
   MODEL = "gpt-6-luna"
   REASONING_LEVEL = "medium"
+  THEREHOLD = 0.60
 
   TEMPERATURE = 0.3  # 推論の論理的整合性を保つため低めに設定
 
-  def __init__(self, llm_client: LLM):
+  def __init__(self, llm_client: LLM, feature_embedding_dict):
     self.llm_client = llm_client
+    self.feature_embedding_dict = feature_embedding_dict
 
   def infer_mismatch(
       self,
@@ -174,6 +177,108 @@ class MismatchReasoning:
     """
     return prompt
 
+  # ミスマッチ推論の具体例と、視聴履歴内の評価値４以上の映画の特徴を結び付ける
+  def mismatch_reasoning_matched_watched_record_feature(
+        self,
+        watch_record,
+        recent_movies_features_data,
+        short_term_like,
+        short_term_dislike,
+        long_term_like,
+        long_term_dislike,
+        feature_hints_text,  # 17作品のヒント
+        # feature_embedding_dict,  # 事前ロード済みの特徴ベクトル辞書
+    ):
+        # 1. 従来のミスマッチ推論を実行
+        mismatch_result = self.infer_mismatch_v2(
+            recent_movies_features_data,
+            short_term_like,
+            short_term_dislike,
+            long_term_like,
+            long_term_dislike,
+            feature_hints_text,
+        )
+        
+        if mismatch_result.get("status") == "not_mismatch":
+            return { "status": "not_mismatch" }
+
+        mismatch_content = mismatch_result.get("content", [])
+
+        # 2. watch_record から int型の movie_ids リストを作成
+        watch_movie_ids = []
+        for item in watch_record:
+            try:
+                m_id = int(item.get("movie_id"))
+                watch_movie_ids.append(m_id)
+            except (ValueError, TypeError):
+                continue
+
+        # 3. Supabase から watch_record の映画の features を一括取得し、辞書からベクトルを引く
+        watch_feature_vectors_flat = []
+        watch_feature_titles_flat = []
+
+        if watch_movie_ids:
+            res = extract_movie_features_by_ids(watch_movie_ids)
+            for row in res.data or []:
+                title = row.get("title")
+                features = row.get("features") or []
+                if isinstance(features, list):
+                    for f in features:
+                        f_text = str(f).strip()
+                        # feature_embedding_dict に存在する場合のみベクトルとタイトルを保持
+                        if f_text and f_text in self.feature_embedding_dict:
+                            vec = self.feature_embedding_dict[f_text]
+                            watch_feature_vectors_flat.append(np.array(vec, dtype=np.float32))
+                            watch_feature_titles_flat.append(title)
+
+        # 視聴履歴のベクトル行列 (W, dim)
+        if watch_feature_vectors_flat:
+            W_matrix = np.vstack(watch_feature_vectors_flat).astype(np.float32)
+            W_norm = W_matrix / (np.linalg.norm(W_matrix, axis=1, keepdims=True) + 1e-9)
+        else:
+            W_norm = None
+
+        # 4. positive_example の各要素と視聴履歴特徴の類似度計算・マッピング
+        for item in mismatch_content:
+            positive_examples = item.get("positive_example", [])
+            mapped_examples = []
+
+            for pos_elem in positive_examples:
+                best_title = None
+                max_sim = 0.0
+
+                if W_norm is not None and len(W_norm) > 0 and pos_elem in self.feature_embedding_dict:
+                    # feature_embedding_dict から pos_elem のベクトルを取得
+                    pos_vec = self.feature_embedding_dict[pos_elem]
+                    p_arr = np.array(pos_vec, dtype=np.float32)
+                    p_norm = p_arr / (np.linalg.norm(p_arr) + 1e-9)
+
+                    # コサイン類似度計算 (W_norm と p_norm のドット積)
+                    sims = np.dot(W_norm, p_norm)
+                    best_idx = np.argmax(sims)
+                    max_sim = float(sims[best_idx])
+
+                    # 類似度が 0.70 以上の場合のみ映画タイトルを紐付ける
+                    if max_sim >= self.THEREHOLD:
+                        best_title = watch_feature_titles_flat[best_idx]
+
+                # 指定されたフォーマットに格納
+                mapped_examples.append({
+                    "element": pos_elem,
+                    "title": best_title  # 0.70未満、辞書にない場合、または該当なしの場合は None
+                })
+
+            # positive_example を置き換え
+            item["positive_example"] = mapped_examples
+
+        # 5. ステータスを含めた辞書形式で返却
+        return {
+            "status": "mismatch",
+            "content": mismatch_content
+        }
+    
+
+
 # ミスマッチ推論v2(共通要素集合なし)
   def infer_mismatch_v2(
     self,
@@ -193,7 +298,7 @@ class MismatchReasoning:
       feature_hints_text
     )
         # LLMの呼び出し（ストリーミング結果を集約）
-    print(prompt)
+    # print(prompt)
     response = self.llm_client.generate_response(
         role=self.SYSTEM_ROLE,
         prompt=prompt,

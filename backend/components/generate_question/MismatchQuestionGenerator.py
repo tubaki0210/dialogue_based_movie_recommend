@@ -67,6 +67,54 @@ class MismatchQuestionGenerator(BaseQuestionGenerator):
       yield full_text
 
 
+  def generate_mismatch_questions_with_title(self, context: QuestionContext):
+        """mismatch_resultを基に、ルールベースでユーザへの質問文を生成する"""
+        mismatch_result = context.mismatch_results
+
+        # 1. 導入文
+        intro = "なるほど、もしかしたら推薦した映画は少しお好みとは違ったかもしれません。"
+
+        # 2. 各観点に対する質問文の生成（リスト形式）
+        question_list = []
+        for item in mismatch_result:
+            mismatch_elem = item.get("mismatch", "")
+            positive_elem = item.get("positive", "")
+            positive_examples = item.get("positive_example", [])
+
+            # 「〇〇はお好みではないですか？それより△△の方が好みですか？」
+            question = (
+                f"「{mismatch_elem}」はお好みではないですか？ それより"
+                f"「{positive_elem}」の方が好みですか？"
+            )
+
+            # 具体例の追加（辞書型構造に対応）
+            if positive_examples:
+                question += "\n例えば、"
+                for pos_example in positive_examples:
+                    # 辞書から element と title を取得
+                    element = pos_example.get("element", "")
+                    title = pos_example.get("title")
+
+                    # タイトルが存在する場合は「特徴（例えば『映画名』）」の形式にする
+                    if title:
+                        question += f"\n・{element}（例えば『{title}』など）"
+                    else:
+                        question += f"\n・{element}"
+
+            question += "\n"
+            question_list.append(question)
+
+        # 3. 締め文
+        closing = "具体的にどんなストーリーや要素が好きか、自由に教えてください！"
+
+        # すべてを結合して出力形式に合わせる
+        output_parts = [intro, ""]
+        output_parts.extend(question_list)
+        output_parts.append("")
+        output_parts.append(closing)
+        full_text = "\n".join(output_parts)
+        yield full_text
+
   def _build_prompt(self, context: QuestionContext) -> str:
     """画像仕様に基づいたプロンプト作成"""
     # 嗜好情報の整形
@@ -82,8 +130,8 @@ class MismatchQuestionGenerator(BaseQuestionGenerator):
 ## タスク詳細
 ・「〇〇という要素はお好みではないですか？それより△△という方が好きですか？」のテンプレートを使用してください。
   - 〇〇: ミスマッチ要素
-  - △△: 対照的な要素
-・対照的な要素の具体例は、質問文の後に選択肢やイメージとして「（例えば、「～」や「～」など）」のように続けてください。
+  - △△: 別方向の要素
+・別方向の要素の具体例は、質問文の後に選択肢やイメージとして「（例えば、「～」や「～」など）」のように続けてください。
 
 ## 出力形式
 1. 最初に、ユーザのフィードバックを受け止めて、「なるほど、〜〜かもしれません。」のように導入文を生成してください。
@@ -106,7 +154,7 @@ class MismatchQuestionGenerator(BaseQuestionGenerator):
       positive = mismatch_ele.get("positive")
       positive_example = mismatch_ele.get("positive_example")
       positive_example_str = "、".join(positive_example)
-      mismatch_ele_str = f"ミスマッチ{i + 1}:\nミスマッチ要素:{mismatch_element}\n対照的な要素:{positive}\n対照的な要素の具体例:{positive_example_str}\n"
+      mismatch_ele_str = f"ミスマッチ{i + 1}:\nミスマッチ要素:{mismatch_element}\n別方向の要素:{positive}\n別方向の要素の具体例:{positive_example_str}\n"
       result.append(mismatch_ele_str)
 
     return "\n".join(result)

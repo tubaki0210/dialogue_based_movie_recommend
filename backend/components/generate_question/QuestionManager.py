@@ -27,7 +27,8 @@ class QuestionManager:
     # ターン数やコンテキストの状態に応じてロジックを切り替える
 
     if mode == "mismatch":
-      return generator.generate_mismatch_questions(context)
+      # return generator.generate_mismatch_questions(context)
+      return generator.generate_mismatch_questions_with_title(context)
 
     if mode == "not_mismatch":
       return generator.generate_unmismatch_questions(context)

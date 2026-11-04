@@ -128,7 +128,7 @@ llm_reranker = LLMReranker(llm_client)
 recommend_manager = RecommendManager(ease_predictor, content_base_predictor, llm_reranker)
 extractor = MovieFeatureExtractor(llm_client)
 movie_feature_combiner = CommonFeatureExtractor(embedding_client)
-mismatch_predictor = MismatchReasoning(llm_client)
+mismatch_predictor = MismatchReasoning(llm_client, content_base_predictor.feature_embedding_dict)
 un_sim_extractor = ExtractUnSimCluster(embedding_client)
 un_mismatch_extractor = UnMismatchReasoning(llm_client)
 base_line_recommender = BaseLineRecommend(llm_client)
@@ -409,7 +409,8 @@ async def chat_endpoint(req: ChatMessageRequest):
                 def run_mismatch_pipeline():
                     features_dict = extractor.extract(recent_rec)
                     common_features = movie_feature_combiner.extract_common_features(features_dict)
-                    mismatch_reasoning_result = mismatch_predictor.infer_mismatch_v2(
+                    mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature(
+                        watch_record,
                         features_dict,
                         context.short_term_like,
                         context.short_term_dislike,
@@ -417,6 +418,15 @@ async def chat_endpoint(req: ChatMessageRequest):
                         long_term_dislike,
                         mismatch_hints,
                     )
+                    # print(mismatch_reasoning_result)
+                    # mismatch_reasoning_result = mismatch_predictor.infer_mismatch_v2(
+                    #     features_dict,
+                    #     context.short_term_like,
+                    #     context.short_term_dislike,
+                    #     long_term_like,
+                    #     long_term_dislike,
+                    #     mismatch_hints,
+                    # )
                     return features_dict, common_features, mismatch_reasoning_result
 
                 features_dict, common_features, mismatch_reasoning_result = await asyncio.to_thread(
