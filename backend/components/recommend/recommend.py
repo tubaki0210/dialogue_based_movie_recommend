@@ -28,11 +28,9 @@ class RecommendManager:
         long_term_dislike_str = self._format_preference(long_term_dislike_list)
         
         # 1段階目(協調フィルタリング＋コンテンツベースフィルタリング)
-        state1_candidate, short_term_like_vec = self._state1_ensemble(
+        state1_candidate, short_term_like_vec = self._state1_ensemble_with_cf(
             user_watch_history, 
             already_recommend_set, 
-            short_term_like_str, 
-            short_term_dislike_str,
             short_term_like_list,
             short_term_dislike_list
             )
@@ -48,12 +46,10 @@ class RecommendManager:
             )
         return reponse, state1_candidate, short_term_like_vec
     
-    def _state1_ensemble(
+    def _state1_ensemble_with_cf(
             self, 
             user_watch_history, 
             already_recommend_set, 
-            short_term_like_str, 
-            short_term_dislike_str,
             short_term_like_list,
             short_term_dislike_list
             ):
@@ -94,6 +90,7 @@ class RecommendManager:
             rec_movie["rank"] = rank + 1
 
         return stage1_final_result[:self.TOP_NUM_FIRST], short_term_like_vec
+
 
     def _format_preference(self, pref):
         return "、".join(pref)
