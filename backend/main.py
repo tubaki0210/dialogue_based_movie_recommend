@@ -497,8 +497,8 @@ async def chat_endpoint(req: ChatMessageRequest):
                 context.short_term_like,
                 20,
                 0.40,
-                0.80,
-                0.65,
+                0.70,
+                0.60,
             )
 
         # DB状態更新およびメッセージ追加を非同期実行
