@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { UserIdProvider } from "./components/UserIdProvider";
 
 
 
@@ -9,7 +10,9 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     <html
       lang="en"
     >
-      <body className="min-h-full flex flex-col">{children}</body>
+      <UserIdProvider>
+        <body className="min-h-full flex flex-col">{children}</body>
+      </UserIdProvider>
     </html>
   );
 }

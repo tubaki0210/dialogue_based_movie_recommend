@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useContext, useState } from "react";
+import { UserIdContext, useUserId } from "./UserIdProvider";
 
 interface LoginViewProps {
   onSessionStarted: (sessionId: string, systemType: string) => void;
@@ -14,7 +15,8 @@ const SYSTEMS = [
 ];
 
 export default function LoginView({ onSessionStarted }: LoginViewProps) {
-  const [userId, setUserId] = useState<string>("");
+  // const [userId, setUserId] = useState<string>("");
+  const { userId, setUserId } = useUserId()
   const [selectedSystem, setSelectedSystem] = useState<string>("A");
   const [loading, setLoading] = useState<boolean>(false);
 
