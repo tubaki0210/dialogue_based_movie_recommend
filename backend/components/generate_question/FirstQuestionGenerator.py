@@ -12,8 +12,8 @@ class FirstQuestionGenerator(BaseQuestionGenerator):
         self.llm_client = llm_client
 
     def generate(self, context):
-        long_like_preferences_str = "、".join(context.long_term_like)
-        long_dislike_preferences_str = "、".join(context.long_term_dislike)
+        long_like_preferences_str = ", ".join(context.long_term_like)
+        long_dislike_preferences_str = ", ".join(context.long_term_dislike)
         prompt = self._build_prompt(long_like_preferences_str, long_dislike_preferences_str)
         response = self.llm_client.generate_response_stream(self.SYSTEM_ROLE, prompt, self.MODEL, self.TEMPERATURE, self.REASONING_LEVEL)
         return response
@@ -36,7 +36,7 @@ class FirstQuestionGenerator(BaseQuestionGenerator):
             今日の気分を選びやすくするため、以下の2つの視点から簡潔な選択肢を提示してください。
 
             - 【いつものお好みに近い方向性】
-                「好む要素」から固有名詞などを含む特定の要素以外のわかりやすい要素を2〜3個取り出し、それぞれのスタイルを表す簡潔なフレーズ（20文字以内）を2~3個提示してください。
+                「好む要素」から、固有名詞などを含む特定の要素以外の、わかりやすい要素を2〜3個取り出し、それぞれのスタイルを表す簡潔なフレーズ（20文字以内）を2~3個提示してください。
                 この時、取り出した要素をそのまま提示するのはやめてください。必ず汎用的なフレーズにしてください
                 ※ ✕ 悪い例: 「テンポの良い掛け合いや意外性のある展開が楽しい、笑いどころ満載のコメディ」（長文）
                 ※ 〇 良い例: 「テンポの良い掛け合いで笑えるコメディ」
