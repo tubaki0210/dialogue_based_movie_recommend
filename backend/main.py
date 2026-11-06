@@ -128,7 +128,7 @@ llm_reranker = LLMReranker(llm_client)
 recommend_manager = RecommendManager(ease_predictor, content_base_predictor, llm_reranker)
 extractor = MovieFeatureExtractor(llm_client)
 movie_feature_combiner = CommonFeatureExtractor(embedding_client)
-mismatch_predictor = MismatchReasoning(llm_client, content_base_predictor.feature_embedding_dict)
+mismatch_predictor = MismatchReasoning(llm_client, embedding_client, content_base_predictor.feature_embedding_dict)
 un_sim_extractor = ExtractUnSimCluster(embedding_client)
 un_mismatch_extractor = UnMismatchReasoning(llm_client)
 base_line_recommender = BaseLineRecommend(llm_client)
@@ -432,6 +432,7 @@ async def chat_endpoint(req: ChatMessageRequest):
                 features_dict, common_features, mismatch_reasoning_result = await asyncio.to_thread(
                     run_mismatch_pipeline
                 )
+                print(mismatch_reasoning_result)
 
                 is_mismatch = mismatch_reasoning_result.get("status") == "mismatch"
                 if is_mismatch:
