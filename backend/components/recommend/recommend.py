@@ -21,11 +21,6 @@ class RecommendManager:
             long_term_like_list, 
             long_term_dislike_list
             ):
-        # 嗜好をリスト形式から文字列に変更
-        short_term_like_str = self._format_preference(short_term_like_list)
-        short_term_dislike_str = self._format_preference(short_term_dislike_list)
-        long_term_like_str = self._format_preference(long_term_like_list)
-        long_term_dislike_str = self._format_preference(long_term_dislike_list)
         
         # 1段階目(協調フィルタリング＋コンテンツベースフィルタリング)
         state1_candidate, short_term_like_vec = self._state1_ensemble_with_cf(
@@ -38,10 +33,10 @@ class RecommendManager:
         # 2段階目(LLM)
         reponse = self.llm_rerank_predictor.rerank(
             state1_candidate, 
-            short_term_like_str, 
-            short_term_dislike_str, 
-            long_term_like_str, 
-            long_term_dislike_str, 
+            short_term_like_list,
+            short_term_dislike_list, 
+            long_term_like_list, 
+            long_term_dislike_list, 
             self.TOP_NUM_FINAL
             )
         return reponse, state1_candidate, short_term_like_vec
@@ -91,6 +86,3 @@ class RecommendManager:
 
         return stage1_final_result[:self.TOP_NUM_FIRST], short_term_like_vec
 
-
-    def _format_preference(self, pref):
-        return "、".join(pref)

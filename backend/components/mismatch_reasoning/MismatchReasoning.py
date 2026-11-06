@@ -1,6 +1,7 @@
 import json
 from typing import Any, Dict, List, Union
 from utils.LLM import LLM
+from utils.Embedding import Embeddings
 from utils.supabase_function import extract_movie_features_by_ids
 import numpy as np
 
@@ -15,8 +16,9 @@ class MismatchReasoning:
 
   TEMPERATURE = 0.3  # 推論の論理的整合性を保つため低めに設定
 
-  def __init__(self, llm_client: LLM, feature_embedding_dict):
+  def __init__(self, llm_client: LLM, embedding_client: Embeddings, feature_embedding_dict):
     self.llm_client = llm_client
+    self.embedding_client = embedding_client
     self.feature_embedding_dict = feature_embedding_dict
 
   def infer_mismatch(
@@ -186,8 +188,7 @@ class MismatchReasoning:
         short_term_dislike,
         long_term_like,
         long_term_dislike,
-        feature_hints_text,  # 17作品のヒント
-        # feature_embedding_dict,  # 事前ロード済みの特徴ベクトル辞書
+        feature_hints_text,
     ):
         # 1. 従来のミスマッチ推論を実行
         mismatch_result = self.infer_mismatch_v2(
@@ -203,6 +204,23 @@ class MismatchReasoning:
             return { "status": "not_mismatch" }
 
         mismatch_content = mismatch_result.get("content", [])
+
+        # ----------------------------------------------------
+        # ★追加: すべての positive_example を集めて一括でベクトル化する
+        # ----------------------------------------------------
+        all_pos_elems = []
+        for item in mismatch_content:
+            for pos_elem in item.get("positive_example", []):
+                if pos_elem and pos_elem not in all_pos_elems:
+                    all_pos_elems.append(pos_elem)
+
+        pos_embedding_dict = {}
+        if all_pos_elems:
+            # ご提示いただいた一括取得関数を使用
+            vectors = self.embedding_client.get_embedding_byList(all_pos_elems)
+            for elem, vec in zip(all_pos_elems, vectors):
+                pos_embedding_dict[elem] = vec
+        # ----------------------------------------------------
 
         # 2. watch_record から int型の movie_ids リストを作成
         watch_movie_ids = []
@@ -225,7 +243,6 @@ class MismatchReasoning:
                 if isinstance(features, list):
                     for f in features:
                         f_text = str(f).strip()
-                        # feature_embedding_dict に存在する場合のみベクトルとタイトルを保持
                         if f_text and f_text in self.feature_embedding_dict:
                             vec = self.feature_embedding_dict[f_text]
                             watch_feature_vectors_flat.append(np.array(vec, dtype=np.float32))
@@ -247,9 +264,9 @@ class MismatchReasoning:
                 best_title = None
                 max_sim = 0.0
 
-                if W_norm is not None and len(W_norm) > 0 and pos_elem in self.feature_embedding_dict:
-                    # feature_embedding_dict から pos_elem のベクトルを取得
-                    pos_vec = self.feature_embedding_dict[pos_elem]
+                # ★ 事前取得した pos_embedding_dict からベクトルを取得して判定
+                if W_norm is not None and len(W_norm) > 0 and pos_elem in pos_embedding_dict:
+                    pos_vec = pos_embedding_dict[pos_elem]
                     p_arr = np.array(pos_vec, dtype=np.float32)
                     p_norm = p_arr / (np.linalg.norm(p_arr) + 1e-9)
 
@@ -257,15 +274,15 @@ class MismatchReasoning:
                     sims = np.dot(W_norm, p_norm)
                     best_idx = np.argmax(sims)
                     max_sim = float(sims[best_idx])
-
-                    # 類似度が 0.70 以上の場合のみ映画タイトルを紐付ける
+                    
+                    # 類似度が閾値以上の場合のみ映画タイトルを紐付ける
                     if max_sim >= self.THEREHOLD:
                         best_title = watch_feature_titles_flat[best_idx]
 
                 # 指定されたフォーマットに格納
                 mapped_examples.append({
                     "element": pos_elem,
-                    "title": best_title  # 0.70未満、辞書にない場合、または該当なしの場合は None
+                    "title": best_title  # 閾値未満、または該当なしの場合は None
                 })
 
             # positive_example を置き換え
@@ -275,8 +292,7 @@ class MismatchReasoning:
         return {
             "status": "mismatch",
             "content": mismatch_content
-        }
-    
+        }   
 
 
 # ミスマッチ推論v2(共通要素集合なし)
@@ -289,16 +305,22 @@ class MismatchReasoning:
     long_term_dislike,
     feature_hints_text,  # 17作品のヒント
 ):
+    # 引数がリストの場合は文字列に整形
+    st_like_str = self._format_preference(short_term_like)
+    st_dislike_str = self._format_preference(short_term_dislike)
+    lt_like_str = self._format_preference(long_term_like)
+    lt_dislike_str = self._format_preference(long_term_dislike)
+    
     prompt = self._build_prompt_v2(
       recent_movies_features_data,
-      short_term_like,
-      short_term_dislike,
-      long_term_like,
-      long_term_dislike,
+      st_like_str,
+      st_dislike_str,
+      lt_like_str,
+      lt_dislike_str,
       feature_hints_text
     )
         # LLMの呼び出し（ストリーミング結果を集約）
-    # print(prompt)
+    print(prompt)
     response = self.llm_client.generate_response(
         role=self.SYSTEM_ROLE,
         prompt=prompt,
@@ -323,11 +345,34 @@ class MismatchReasoning:
       feature_hints_text,  # 17作品のヒント
   ):
     recent_movies_features_text = self._format_features_list(recent_movies_features_data)
-    prompt = f"""\
     
-  ## ミスマッチの定義
-    ・ユーザーの短期的嗜好(好み)または長期的嗜好(好み)の大枠には一致しているが、その具体的内容や解釈がユーザーの期待（長期的嗜好や避ける要素など）とズレている要素。
+    mismatch_definition = "ユーザーの短期的嗜好(好み)または長期的嗜好(好み)の大枠には一致しているが、その具体的内容や解釈がユーザーの期待とズレている要素。"
+    preference_section = f"""\
+  ## ユーザーの嗜好情報
+  ・短期的嗜好（好み）: {short_term_like}
+  ・短期的嗜好（苦手/嫌い）: {short_term_dislike}
+  ・長期的嗜好（好み）: {long_term_like}
+  ・長期的嗜好（苦手/嫌い）: {long_term_dislike}"""
+        
+    long_term_constraint_note = "・ユーザーの「長期的嗜好（苦手）」に記載されている文字列をそのまま `mismatch` の値として出力することは厳禁です。必ず【抽出された共通要素】に存在するクラスター表現を元に記述してください。"
+    # long_term が空かどうかを判定（整形済み文字列が空、または "なし" や "None" の場合を考慮）
+    is_long_term_empty = not long_term_like or long_term_like.strip() in ["", "なし", "None", "[]", "特になし"]
 
+    if is_long_term_empty:
+        # ==========================================
+        # パターンA: 短期的嗜好のみのバージョン
+        # ==========================================
+        mismatch_definition = "ユーザーの短期的嗜好（好み）の大枠には一致しているが、その具体的内容や解釈がユーザーの期待とズレている要素。"
+        preference_section = f"""\
+        ## ユーザーの嗜好情報
+        ・短期的嗜好（好み）: {short_term_like}
+        ・短期的嗜好（苦手/嫌い）: {short_term_dislike}
+        """
+        long_term_constraint_note = ""
+    # 共通のプロンプトテンプレートに切り替えた変数を埋め込む
+    prompt = f"""\
+  ## ミスマッチの定義
+    ・{mismatch_definition}
 
   ## タスク概要
   ユーザーは直前に推薦された3作品に対して「微妙・何か違う」という否定的なフィードバックを示しています。
@@ -340,9 +385,9 @@ class MismatchReasoning:
 
   ## タスク手順
   1. 【3作品の特徴分析】直前推薦3作品の特徴フレーズを観察し、作品間に共通する傾向や、特定の作品で目立つ特徴を整理します。
-  2. 【ミスマッチ原因の特定】ユーザーの短期的・長期的嗜好と照らし合わせ、不満の原因となっている具体的特徴フレーズを【直前推薦3作品の生の特徴フレーズ】の中から特定します（`mismatch`）。
+  2. 【ミスマッチ原因の特定】ユーザーの嗜好と照らし合わせ、不満の原因となっている具体的特徴フレーズを【直前推薦3作品の生の特徴フレーズ】の中から特定します（`mismatch`）。
   3. 【方向性の異なる要素の選定】ミスマッチ要素は避けて、【推薦候補（17作品）の参考特徴リスト】を参考に、嗜好の大枠を維持した別方向の要素（`positive`）と、その具体的な特徴フレーズ（`positive_example`）を選定してください。
-    - `positive_example` は長文のあらすじ説明（〜する物語）にするのではなく、**映画の特徴を表す簡潔なフレーズ（20文字前後）**として記述してください。の異なる要素の選定】ミスマッチ要素（例：重苦しい感動）は避けて、【推薦候補（17作品）の参考特徴リスト】を参考にして、ユーザーの嗜好の大枠を維持したまま、ミスマッチ要素とは別の方向性の要素（`positive`）およびその具体例（`positive_example`）を考えてください。
+     - `positive_example` は長文のあらすじ説明にするのではなく、**映画の特徴を表す簡潔なフレーズ（20文字前後）**として記述してください。
 
   ## ミスマッチ推論の例
   ・ユーザー嗜好: [短期的嗜好: 感動]
@@ -351,10 +396,10 @@ class MismatchReasoning:
     - mismatch: 「重苦しく切ない展開を中心とした泣かせる感動」
     - reason: ユーザーは「感動」を求めているが、「切なさ・重さ」に偏っており、これがユーザーの期待する感動体験とズレて「微妙」と感じさせた可能性が高い。
     - positive: 「切なさや重さではなく、読後に心が明るく前向きになる感動」
-    - positive_example: ["主人公が困難を乗り越えて成長, "家族の絆や友情"]
+    - positive_example: ["主人公が困難を乗り越えて成長", "家族の絆や友情"]
 
   ## 制約事項
-  ・ユーザーの好む要素(短期的or長期的)と重複したミスマッチ要素を推論しないでください。
+  ・ユーザーの好む要素と重複したミスマッチ要素を推論しないでください。
   ・`positive_example` は絶対に「〜する物語」「〜なファンタジー」といった説明文・あらすじ文章にしないでください。
   ・**必ず「体言止め（名詞句）」の短くシャープな特徴タグ（15文字以内）として出力してください。**
     - ✕ 悪い例: 「魔法の世界に包まれた心温まる物語」（要素が合体した説明文）
@@ -363,14 +408,12 @@ class MismatchReasoning:
     - 〇 良い例: 「幻想的な世界観」
     - 〇 良い例: 「魔法世界の冒険」
     - 〇 良い例: 「丁寧な人物描写」
-・「長期的嗜好」にある単語（例：家族愛など）を安易にジャンルへ合体させないでください。そのジャンルの世界観の中でどのように表現されるかの「視点・切り口」として記述してください。
+  ・「長期的嗜好」にある単語を安易にジャンルへ合体させないでください。そのジャンルの世界観の中でどのように表現されるかの「視点・切り口」として記述してください。
   ・映画のタイトルは含めないでください。
   ・嗜好の大枠には合致するがミスマッチ要素とは異なる方向性を持つ要素を考える際、大枠のジャンルを変更しないでください（例：感動ドラマからアクションへ変更するのは禁止）。
   ・ミスマッチ要素と嗜好の大枠には合致するがミスマッチ要素とは異なる方向性を持つ要素はできるだけ簡潔に長くなりすぎないようにしてください。
-  ・ユーザーの「長期的嗜好（苦手）」に記載されている文字列をそのまま `mismatch` の値として出力することは厳禁です。必ず【抽出された共通要素】に存在するクラスター表現を元に記述してください。
+  {long_term_constraint_note}
   ・**`positive_example` を作成する際は、【推薦候補（17作品）に実在する嗜好別特徴リスト】に記載されているフレーズを参考にしてほしいですが、そのフレーズをそのまま使うのではなく、具体的にしてください。**
-  
-
 
   ## 【直前推薦3作品の生の特徴フレーズ】
   {recent_movies_features_text}
@@ -378,11 +421,7 @@ class MismatchReasoning:
   ## 【推薦候補（17作品）の参考特徴リスト（positive導出用）】
   {feature_hints_text}
 
-  ## ユーザーの嗜好情報
-  ・短期的嗜好（好み）: {short_term_like}
-  ・短期的嗜好（苦手/嫌い）: {short_term_dislike}
-  ・長期的嗜好（好み）: {long_term_like}
-  ・長期的嗜好（苦手/嫌い）: {long_term_dislike}
+{preference_section}
 
   ## 出力フォーマット
   必ず以下のJSON配列形式で出力してください。真に根拠がなくミスマッチが推論できない場合のみ "not_mismatch" と出力してください。
@@ -396,11 +435,8 @@ class MismatchReasoning:
       "positive_example": [
         "具体例1",
         "具体例2",
-        "具体例3
+        "具体例3"
       ]
-    }},
-    {{
-      ...
     }}
   ]
   """
@@ -425,8 +461,8 @@ class MismatchReasoning:
   def _format_preference(self, pref: Union[List[str], str]) -> str:
     """嗜好データをプロンプト用の文字列に整える"""
     if isinstance(pref, list):
-      return "、".join(pref) if pref else "特になし"
-    return pref if pref else "特になし"
+      return ", ".join(pref) if pref else ""
+    return pref if pref else ""
 
   def _parse_json_response(self, response_text: str) -> List[Dict[str, Any]]:
     """LLMの返答テキストを安全にパースする"""
