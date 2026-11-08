@@ -32,7 +32,7 @@ export default function Home() {
           {sessionId && (
             <button
               onClick={handleResetSession}
-              className="border-2 p-3 font-bold bg-blue-200 hover:bg-blue-400"
+              className="border-2 border-blue-300 p-3 font-bold bg-blue-200 hover:bg-blue-400 rounded-2xl"
             >
               システムを切り替える
             </button>

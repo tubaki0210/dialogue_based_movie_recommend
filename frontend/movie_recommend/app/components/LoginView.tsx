@@ -16,8 +16,8 @@ const SYSTEMS = [
 
 export default function LoginView({ onSessionStarted }: LoginViewProps) {
   // const [userId, setUserId] = useState<string>("");
-  const { userId, setUserId } = useUserId()
-  const [selectedSystem, setSelectedSystem] = useState<string>("A");
+  const { userId, setUserId, selectedSystem, setSelectedSystem } = useUserId()
+  // const [selectedSystem, setSelectedSystem] = useState<string>("A");
   const [loading, setLoading] = useState<boolean>(false);
 
   const handleStartSession = async (e: React.FormEvent) => {
