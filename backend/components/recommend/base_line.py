@@ -13,7 +13,7 @@ class BaseLineRecommend:
     SYSTEM_ROLE = "あなたは、ユーザーの嗜好に合った映画を推薦するアシスタントです。"
     TEMPERATURE = 0.7
     MODEL = "gpt-6-luna"
-    REASONING_LEVEL = "low"
+    REASONING_LEVEL = "medium"
 
     def __init__(self, llm_client : LLM):
         self.llm_client = llm_client
@@ -38,6 +38,7 @@ class BaseLineRecommend:
             3. 注意事項
             - 結末などの重大なネタバレは避けてください。
             - 「*」などの余計な記号は付けないでください。
+            - 対話なので、自然な会話のトーンで話してください
 
             ### 対話履歴
             {join_dialogue}
