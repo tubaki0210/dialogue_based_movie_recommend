@@ -12,7 +12,8 @@ class LLM:
                 {"role" : "system", "content" : role},
                 {"role" : "user", "content"  : prompt}
             ],
-            reasoning={"effort" : reasoning_level} 
+            reasoning={"effort" : reasoning_level},
+            timeout=120
             # temperature=temperature
         )
         return response.output_text.replace('　','').replace(' ','')
@@ -26,6 +27,7 @@ class LLM:
             ],
             reasoning={"effort" : reasoning_level} ,
             stream=True,
+            timeout=120
             # temperature=temperature
         )
         for chunk in response:
