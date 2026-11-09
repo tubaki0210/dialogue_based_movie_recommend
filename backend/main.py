@@ -54,6 +54,9 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+# 【追加】重い計算・LLM処理が同時に何件も走ってサーバーがパンクするのを防ぐためのセマフォ（例: 最大3件まで同時実行）
+heavy_task_semaphore = asyncio.Semaphore(3)
+
 
 # Supabaseクエリをスレッドプールで非同期実行するためのヘルパー関数
 async def async_supabase_execute(query):
@@ -133,9 +136,7 @@ un_sim_extractor = ExtractUnSimCluster(embedding_client)
 un_mismatch_extractor = UnMismatchReasoning(llm_client)
 base_line_recommender = BaseLineRecommend(llm_client)
 
-# features_to_embedding_dict = load_feature_embedding_dict(parquet_path)
 hint_extractor = FeatureHintExtractor(content_base_predictor.feature_embedding_dict)
-
 
 
 # 補助関数
@@ -254,18 +255,18 @@ async def stream_init_question(req: InitQuestionRequest):
 
     context = QuestionContext(user_profile=user_data)
 
-    # 初期質問生成の同期処理を別スレッドで取得
-    first_stream = await asyncio.to_thread(
-        question_manager.generate_question, "first", context
-    )
+    # 初期質問生成の同期処理を別スレッドで取得（ここにもセマフォを適用したい場合は `async with heavy_task_semaphore:` を使えます）
+    async with heavy_task_semaphore:
+        first_stream = await asyncio.to_thread(
+            question_manager.generate_question, "first", context
+        )
 
     async def event_generator():
         full_res_text = ""
-        # イテレーションごとのブロッキングを軽減
         for chunk in first_stream:
             full_res_text += chunk
             yield f"data: {json.dumps({'content': chunk})}\n\n"
-            await asyncio.sleep(0)  # イベントループに処理権を一旦譲る
+            await asyncio.sleep(0)
 
         await async_supabase_execute(
             supabase.table("chat_messages").insert({
@@ -307,7 +308,6 @@ async def chat_endpoint(req: ChatMessageRequest):
         supabase.table("chat_messages").select("*").eq("session_id", session_id).order("created_at")
     )
 
-    # 複数クエリの並列非同期実行
     user_res, ratings_res, msg_res = await asyncio.gather(
         user_res_task, ratings_res_task, msg_res_task
     )
@@ -318,7 +318,6 @@ async def chat_endpoint(req: ChatMessageRequest):
 
     watch_record = ratings_res.data if ratings_res.data else []
 
-    # 3. 過去の対話履歴を取得
     dialogue_list = [
         {
             "role": m["role"],
@@ -328,7 +327,6 @@ async def chat_endpoint(req: ChatMessageRequest):
         for m in msg_res.data
     ]
 
-    # 長期的嗜好の判定（システムB,Dの場合は空リストに設定）
     if system_type in ["B", "D"]:
         long_term_like = []
         long_term_dislike = []
@@ -358,129 +356,113 @@ async def chat_endpoint(req: ChatMessageRequest):
     stage1_candidate = []
     short_term_like_vec = None
 
-    # --- システムタイプごとの分岐処理 ---
-
-    # システムD（ベースライン）
-    if system_type == "D":
-        stream_generator = await asyncio.to_thread(
-            base_line_recommender.generate_response, user_input, dialogue_list
-        )
-
-    # システムA, B, C
-    else:
-        # Move選定の非同期スレッド化
-        current_turn_move = await asyncio.to_thread(
-            current_move_selector.select_move, user_input, dialogue_list, move_history
-        )
-        move_history.append(current_turn_move)
-
-        if current_turn_move == "recommend":
-            # 嗜好抽出
-            result_preferences = await asyncio.to_thread(
-                pref_extractor.extract_user_preferences,
-                user_input,
-                dialogue_list,
-                context.short_term_like,
-                context.short_term_dislike,
+    # --- 【セマフォ適用】重い処理のブロック全体をセマフォで保護 ---
+    async with heavy_task_semaphore:
+        # システムD（ベースライン）
+        if system_type == "D":
+            stream_generator = await asyncio.to_thread(
+                base_line_recommender.generate_response, user_input, dialogue_list
             )
-            context.update_short_term_preference(result_preferences)
 
-            # 推薦処理（重い計算処理）を別スレッドで実行
-            raw_stream_generator, stage1_candidate, short_term_like_vec = await asyncio.to_thread(
-                recommend_manager.recommend,
-                watch_record,
-                already_recommend,
-                context.short_term_like,
-                context.short_term_dislike,
-                long_term_like,
-                long_term_dislike,
+        # システムA, B, C
+        else:
+            current_turn_move = await asyncio.to_thread(
+                current_move_selector.select_move, user_input, dialogue_list, move_history
             )
-            stream_generator = replace_id_to_title_stream(raw_stream_generator, movie_metadata)
+            move_history.append(current_turn_move)
 
-        elif current_turn_move == "mismatch_question":
-            if system_type == "C":
-                stream_generator = await asyncio.to_thread(
-                    question_manager.generate_question, "fallback", context
+            if current_turn_move == "recommend":
+                result_preferences = await asyncio.to_thread(
+                    pref_extractor.extract_user_preferences,
+                    user_input,
+                    dialogue_list,
+                    context.short_term_like,
+                    context.short_term_dislike,
                 )
-            else:
-                recent_rec = extract_recent_recommend_response(dialogue_list)
+                context.update_short_term_preference(result_preferences)
 
-                # 重い抽出・推論処理をスレッドプールに逃がす
-                def run_mismatch_pipeline():
-                    features_dict = extractor.extract(recent_rec)
-                    common_features = movie_feature_combiner.extract_common_features(features_dict)
-                    mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature(
-                        watch_record,
-                        features_dict,
-                        context.short_term_like,
-                        context.short_term_dislike,
-                        long_term_like,
-                        long_term_dislike,
-                        mismatch_hints,
-                    )
-                    # print(mismatch_reasoning_result)
-                    # mismatch_reasoning_result = mismatch_predictor.infer_mismatch_v2(
-                    #     features_dict,
-                    #     context.short_term_like,
-                    #     context.short_term_dislike,
-                    #     long_term_like,
-                    #     long_term_dislike,
-                    #     mismatch_hints,
-                    # )
-                    return features_dict, common_features, mismatch_reasoning_result
-
-                features_dict, common_features, mismatch_reasoning_result = await asyncio.to_thread(
-                    run_mismatch_pipeline
+                raw_stream_generator, stage1_candidate, short_term_like_vec = await asyncio.to_thread(
+                    recommend_manager.recommend,
+                    watch_record,
+                    already_recommend,
+                    context.short_term_like,
+                    context.short_term_dislike,
+                    long_term_like,
+                    long_term_dislike,
                 )
-                print(mismatch_reasoning_result)
+                stream_generator = replace_id_to_title_stream(raw_stream_generator, movie_metadata)
 
-                is_mismatch = mismatch_reasoning_result.get("status") == "mismatch"
-                if is_mismatch:
-                    mismatch_content = mismatch_reasoning_result.get("content")
-                    context.mismatch_results = mismatch_content
+            elif current_turn_move == "mismatch_question":
+                if system_type == "C":
                     stream_generator = await asyncio.to_thread(
-                        question_manager.generate_question, "mismatch", context
+                        question_manager.generate_question, "fallback", context
                     )
                 else:
-                    def run_unmismatch_pipeline():
-                        un_sim_cluster = un_sim_extractor.extract(common_features, context.short_term_like)
-                        return un_mismatch_extractor.reasoning(
-                            un_sim_cluster,
+                    recent_rec = extract_recent_recommend_response(dialogue_list)
+
+                    def run_mismatch_pipeline():
+                        features_dict = extractor.extract(recent_rec)
+                        common_features = movie_feature_combiner.extract_common_features(features_dict)
+                        mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature(
+                            watch_record,
+                            features_dict,
                             context.short_term_like,
                             context.short_term_dislike,
                             long_term_like,
                             long_term_dislike,
+                            mismatch_hints,
                         )
+                        return features_dict, common_features, mismatch_reasoning_result
 
-                    un_mismatch_result = await asyncio.to_thread(run_unmismatch_pipeline)
-                    is_unmismatch = un_mismatch_result.get("status") == "unmismatch"
+                    features_dict, common_features, mismatch_reasoning_result = await asyncio.to_thread(
+                        run_mismatch_pipeline
+                    )
 
-                    if is_unmismatch:
-                        context.un_mismatch_results = un_mismatch_result
+                    is_mismatch = mismatch_reasoning_result.get("status") == "mismatch"
+                    if is_mismatch:
+                        mismatch_content = mismatch_reasoning_result.get("content")
+                        context.mismatch_results = mismatch_content
                         stream_generator = await asyncio.to_thread(
-                            question_manager.generate_question, "not_mismatch", context
+                            question_manager.generate_question, "mismatch", context
                         )
                     else:
-                        stream_generator = await asyncio.to_thread(
-                            question_manager.generate_question, "fallback", context
-                        )
-        else:
-            stream_generator = await asyncio.to_thread(
-                question_manager.generate_question, "fallback", context
-            )
+                        def run_unmismatch_pipeline():
+                            un_sim_cluster = un_sim_extractor.extract(common_features, context.short_term_like)
+                            return un_mismatch_extractor.reasoning(
+                                un_sim_cluster,
+                                context.short_term_like,
+                                context.short_term_dislike,
+                                long_term_like,
+                                long_term_dislike,
+                            )
+
+                        un_mismatch_result = await asyncio.to_thread(run_unmismatch_pipeline)
+                        is_unmismatch = un_mismatch_result.get("status") == "unmismatch"
+
+                        if is_unmismatch:
+                            context.un_mismatch_results = un_mismatch_result
+                            stream_generator = await asyncio.to_thread(
+                                question_manager.generate_question, "not_mismatch", context
+                            )
+                        else:
+                            stream_generator = await asyncio.to_thread(
+                                question_manager.generate_question, "fallback", context
+                            )
+            else:
+                stream_generator = await asyncio.to_thread(
+                    question_manager.generate_question, "fallback", context
+                )
 
     # 4. SSEイベントストリームの非同期生成
     async def event_generator() -> AsyncGenerator[str, None]:
         nonlocal mismatch_hints
         full_system_res = ""
 
-        # ストリームのトークン出力中に他リクエストをブロックしないよう sleep(0) を挟む
         for chunk in stream_generator:
             full_system_res += chunk
             yield f"data: {json.dumps({'content': chunk})}\n\n"
             await asyncio.sleep(0)
 
-        # 推薦実行時の状態更新
         if current_turn_move == "recommend":
             rec_movie_set = extract_recommend_title(full_system_res)
             already_recommend.update(rec_movie_set)
@@ -501,39 +483,6 @@ async def chat_endpoint(req: ChatMessageRequest):
                 0.70,
                 0.60,
             )
-
-        # # DB状態更新およびメッセージ追加を非同期実行
-        # update_session_task = async_supabase_execute(
-        #     supabase.table("chat_sessions").update({
-        #         "short_term_like": context.short_term_like,
-        #         "short_term_dislike": context.short_term_dislike,
-        #         "already_recommend": list(already_recommend),
-        #         "move_history": move_history,
-        #         "mismatch_hint": mismatch_hints,
-        #     }).eq("id", session_id)
-        # )
-
-        # insert_user_msg_task = async_supabase_execute(
-        #     supabase.table("chat_messages").insert({
-        #         "session_id": session_id,
-        #         "role": "user",
-        #         "category": None,
-        #         "content": user_input,
-        #     })
-        # )
-
-        # insert_sys_msg_task = async_supabase_execute(
-        #     supabase.table("chat_messages").insert({
-        #         "session_id": session_id,
-        #         "role": "system",
-        #         "category": current_turn_move,
-        #         "content": full_system_res,
-        #     })
-        # )
-
-        # await asyncio.gather(
-        #     update_session_task, insert_user_msg_task, insert_sys_msg_task
-        # )
 
         await async_supabase_execute(
             supabase.table("chat_sessions").update({
