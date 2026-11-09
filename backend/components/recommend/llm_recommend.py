@@ -219,6 +219,7 @@ class LLMReranker:
 - 推薦する映画IDは『』で囲むようにしてください。
 - 「長期的嗜好である」や「短期的嗜好である」といった表現はつけないでください。
 - 映画の公開年は映画IDの後に(例: 『○○』(2020年))のように含めてください。
+- 提供された映画情報の「映画ID」と、その下の「あらすじ・特徴」などは必ず1対1で決まる同一の作品です。別の映画の記憶やタイトルと混同し、IDと説明の内容が食い違わないようにしてください。。
 - 対話の中では「ユーザ」ではなく「あなた」と言ってください。
 - あなたが参照できるのは与えられた情報のみです。
 
@@ -267,7 +268,7 @@ class LLMReranker:
             """
       movie_information_list.append(movie_information_text)
 
-    return "\n".join(movie_information_list)
+    return "\n\n".join(movie_information_list)
 
   def _format_preference(self, pref):
         if isinstance(pref, list):

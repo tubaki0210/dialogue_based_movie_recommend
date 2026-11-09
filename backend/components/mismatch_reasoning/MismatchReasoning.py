@@ -12,7 +12,7 @@ class MismatchReasoning:
   SYSTEM_ROLE = "あなたは対話型映画推薦システムにおいて、ユーザーの嗜好と映画特徴の『解釈のズレ（ミスマッチ）』を精密に推論・分析する専門アナリストです。"
   MODEL = "gpt-6-luna"
   REASONING_LEVEL = "medium"
-  THEREHOLD = 0.60
+  THEREHOLD = 0.65
 
   TEMPERATURE = 0.3  # 推論の論理的整合性を保つため低めに設定
 

@@ -97,7 +97,7 @@ class MismatchQuestionGenerator(BaseQuestionGenerator):
 
                     # タイトルが存在する場合は「特徴（例えば『映画名』）」の形式にする
                     if title:
-                        question += f"\n・{element}（例えば『{title}』など）"
+                        question += f"\n・{element}（『{title}』など）"
                     else:
                         question += f"\n・{element}"
 
