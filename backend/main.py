@@ -502,8 +502,40 @@ async def chat_endpoint(req: ChatMessageRequest):
                 0.60,
             )
 
-        # DB状態更新およびメッセージ追加を非同期実行
-        update_session_task = async_supabase_execute(
+        # # DB状態更新およびメッセージ追加を非同期実行
+        # update_session_task = async_supabase_execute(
+        #     supabase.table("chat_sessions").update({
+        #         "short_term_like": context.short_term_like,
+        #         "short_term_dislike": context.short_term_dislike,
+        #         "already_recommend": list(already_recommend),
+        #         "move_history": move_history,
+        #         "mismatch_hint": mismatch_hints,
+        #     }).eq("id", session_id)
+        # )
+
+        # insert_user_msg_task = async_supabase_execute(
+        #     supabase.table("chat_messages").insert({
+        #         "session_id": session_id,
+        #         "role": "user",
+        #         "category": None,
+        #         "content": user_input,
+        #     })
+        # )
+
+        # insert_sys_msg_task = async_supabase_execute(
+        #     supabase.table("chat_messages").insert({
+        #         "session_id": session_id,
+        #         "role": "system",
+        #         "category": current_turn_move,
+        #         "content": full_system_res,
+        #     })
+        # )
+
+        # await asyncio.gather(
+        #     update_session_task, insert_user_msg_task, insert_sys_msg_task
+        # )
+
+        await async_supabase_execute(
             supabase.table("chat_sessions").update({
                 "short_term_like": context.short_term_like,
                 "short_term_dislike": context.short_term_dislike,
@@ -513,7 +545,7 @@ async def chat_endpoint(req: ChatMessageRequest):
             }).eq("id", session_id)
         )
 
-        insert_user_msg_task = async_supabase_execute(
+        await async_supabase_execute(
             supabase.table("chat_messages").insert({
                 "session_id": session_id,
                 "role": "user",
@@ -522,17 +554,13 @@ async def chat_endpoint(req: ChatMessageRequest):
             })
         )
 
-        insert_sys_msg_task = async_supabase_execute(
+        await async_supabase_execute(
             supabase.table("chat_messages").insert({
                 "session_id": session_id,
                 "role": "system",
                 "category": current_turn_move,
                 "content": full_system_res,
             })
-        )
-
-        await asyncio.gather(
-            update_session_task, insert_user_msg_task, insert_sys_msg_task
         )
 
         yield "data: [DONE]\n\n"
