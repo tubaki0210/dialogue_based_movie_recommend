@@ -204,7 +204,7 @@ class MismatchReasoning:
             return { "status": "not_mismatch" }
 
         mismatch_content = mismatch_result.get("content", [])
-
+        print(mismatch_content)
         # ----------------------------------------------------
         # ★追加: すべての positive_example を集めて一括でベクトル化する
         # ----------------------------------------------------
@@ -369,6 +369,7 @@ class MismatchReasoning:
         ・短期的嗜好（苦手/嫌い）: {short_term_dislike}
         """
         long_term_constraint_note = ""
+    print(preference_section)
     # 共通のプロンプトテンプレートに切り替えた変数を埋め込む
     prompt = f"""\
   ## ミスマッチの定義
@@ -376,10 +377,10 @@ class MismatchReasoning:
 
   ## タスク概要
   ユーザーは直前に推薦された3作品に対して「微妙・何か違う」という否定的なフィードバックを示しています。
-  提示された【直前推薦3作品の生の特徴フレーズ】と【ユーザーの嗜好情報】を分析し、**なぜユーザーが微妙だと感じたのか、どの特徴のニュアンスや方向性がユーザーの期待とズレていたのか（ミスマッチ要素）**を推論してください。
+  提示された【直前推薦3作品の生の特徴フレーズ】と【ユーザーの嗜好情報】を分析し、なぜユーザーが微妙だと感じたのか、どの特徴のニュアンスや方向性がユーザーの期待とズレていたのか（ミスマッチ要素）を推論してください。
   一つの観点だけでなく、複数の観点から考えても構いません。
 
-  ## 推論の前提条件（最重要）
+  ## 推論の前提条件
   1. ユーザーは「微妙」と言っているため、3作品の特徴の中には嗜好にマッチしているが、その具体的内容がユーザーの期待と異なるミスマッチ要素が存在している可能性があります。
   2. 「嗜好には合致しているが、その具体的内容がユーザーの期待と異なるのではないか？」という視点で特徴フレーズ（mismatch）を特定してください。
 
@@ -387,41 +388,59 @@ class MismatchReasoning:
   1. 【3作品の特徴分析】直前推薦3作品の特徴フレーズを観察し、作品間に共通する傾向や、特定の作品で目立つ特徴を整理します。
   2. 【ミスマッチ原因の特定】ステップ1で整理した特徴とユーザーの嗜好を照らし合わせ、不満の原因を特定します。（`mismatch`）。
      - ミスマッチ要素を特定する際は、必ず「ミスマッチの定義」に従ってください。
-  3. 【方向性の異なる要素の選定】ミスマッチ要素は避けて、【推薦候補（17作品）の参考特徴リスト】を参考に、嗜好の大枠を維持した別方向の要素（`positive`）と、その具体的な特徴フレーズ（`positive_example`）を選定してください。
-     - `positive`は必ず嗜好の大枠を維持するようにしてください
-     - `positive_example`は長文のあらすじ説明にするのではなく、**映画の特徴を表す簡潔なフレーズ（20文字前後）**として記述してください。
-     - `positive_example` を考える際は、【推薦候補（17作品）に実在する嗜好別特徴リスト】に記載されているフレーズを参考にしてほしいですが、あくまで参考なのでよりユーザーの嗜好を具体化できるような要素に変換してください。
+     - 【重要】「ドラマが混在している」「笑いの要素が多い」といった、他ジャンルや別要素の混入をミスマッチの原因にすることは禁止です。** あくまで「アクション」や「感動」といった嗜好の内部において、「どんな具体的な手法・スタイル・演出（例：銃撃戦、肉弾戦、カーチェイスなど）に偏っていたか」という**同一カテゴリ内の具体性のズレ**として特定してください
+     - `mismatch` は**余計な説明文（「〜に寄り〜な方向性」など）をつけず、名詞句（20文字以内）で記述してください。
+     - 短期的嗜好とのミスマッチを優先的に考えてください。短期的嗜好とのミスマッチがない場合に、長期的嗜好とのミスマッチを考えてください。
+  3. 【方向性の異なる要素の選定】ミスマッチ要素は避けて、`target_preference`を維持したまま、そのジャンルや世界観特有のどのような別方向の切り口・アプローチにシフトすべきかを決定します（`positive`）。
+     - `positive` は、「絆」や「人間関係」「仲間との信頼」といった、どんなジャンルにも当てはまる抽象的な言葉にするのではなく、ミスマッチを特定した嗜好における具体的な要素やギミックの方向性で表現してください。
+     - `positive` は、「〜な演出」「〜する展開」といった長文にせず、どのような方向性にシフトするのかを示す端的な名詞句（20文字以内）で表現してください。
+     - 【参考特徴リスト】はあくまで参考ですので、そのまま抽出する必要はありません。抽象的な特徴であれば必ず具体化してユーザーが答えやすいようにしてください。
+  4. 【方向性の異なる要素の具体例の推論】ステップ3で定めた方向性を踏まえ、【ヒント】を参考にしながら、より作品の魅力やシチュエーションがイメージしやすい具体的な特徴タグを推論します（`positive_example`）。
+     - 【ヒント】はあくまで参考ですので、そのまま抽出する必要はありません。抽象的な特徴であれば必ず具体化してユーザーが答えやすいようにしてください。
+     - 「感動的なストーリー展開」や「ラストに感動」といった、ヒントにある**抽象的な言葉**をそのまま使うことは禁止です。そのヒントが示す内容は具体的にどのような場面・構造・シチュエーションなのか（例：「親子の別れ」「魔法による戦闘」「カンフーアクション」「自己犠牲のドラマ」など）を考えて表現してください。
+     - `positive_example` は、その具体的な方向性を表す短い特徴タグ（20文字以内・体言止め）にしてください。
+     - `positive_example`は最大4個考えてください。
 
 
-  ## ミスマッチ推論の例
-  ・ユーザー嗜好: [短期的嗜好: 感動]
-  ・直前3作品の特徴: ["泣ける親子の別れ", "重厚な人間ドラマ", "切ないラスト"]
+  ## ミスマッチ推論の例1
+  ・ユーザー嗜好: [短期的嗜好: SF・冒険]
+  ・直前3作品の特徴: ["タイムトラベルの謎解き", "歴史改変のサスペンス", "複雑な因果律"]
   ・推論:
-    - mismatch: 「重苦しく切ない感動」
-    - reason: ユーザーは「感動」を求めているが、「切なさ・重さ」に偏っており、これがユーザーの期待する感動体験とズレて「微妙」と感じさせた可能性が高い。
-    - positive: 「切なさや重さではなく、が明るく前向きになる感動」
-    - positive_example: ["主人公が困難を乗り越えて成長", "家族の絆や友情"]
+    - mismatch: 「時間改変や因果律を読み解く頭脳戦的なSF要素」
+    - reason: ユーザーは「SF・冒険」を求めているが、「複雑な頭脳戦・謎解き」に偏っており、これがユーザーの期待するワクワクする冒険体験とズレて「微妙」と感じさせた可能性が高い。
+    - positive: 「未知の領域の探索」
+    - positive_example: ["巨大宇宙船での探索", "未知の惑星との遭遇", "サイバーパンクな都市描写"]
+
+  ## ミスマッチ推論の例2（ヒントの具体的落とし込み例）
+  ・ユーザー嗜好: [短期的嗜好: 感動]
+  ・参考ヒント情報: [「ラストに感動」、「感動的なストーリー展開」、「衝撃の運命」、「泣ける展開」]
+  ・直前3作品の特徴: ["コミカルな掛け合い", "日常のドタバタ劇", "ライトな笑いの要素"]
+  ・推論:
+    - mismatch: 「笑いや日常のドタバタに偏り、感情を揺さぶるドラマ性が弱い要素」
+    - reason: ユーザーは「感動」を求めているが、笑いの要素が強すぎて物足りなさを感じさせた可能性が高い。
+    - positive: 「運命の過酷さとそれを乗り越える」
+    - positive_example: ["親子の離別と再会", "大切な人のための自己犠牲", "隠された過去の真実の判明"]
 
   ## 制約事項
   ・ユーザーの好む要素と重複したミスマッチ要素を推論しないでください。
+  ・「アクションの中にドラマや笑いがある」「感動の中にコメディがある」といった、異なるジャンルや要素の混同をミスマッチの理由にしないでください。ユーザーの嗜好として指定されたジャンル（例：アクション）の“内部”における、具体的な演出手法やスタイルの偏り（例：大味な銃撃戦への偏り、派手なカーチェイスの欠如など）を推論してください
+  ・`target_preference`は必ず、「ユーザーの嗜好情報」からそのまま抽出してください。
   ・`positive_example` は絶対に「〜する物語」「〜なファンタジー」といった説明文・あらすじ文章にしないでください。
-  ・**必ず「体言止め（名詞句）」の短くシャープな特徴タグ（15文字以内）として出力してください。**
+  ・必ず「体言止め（名詞句）」の短くシャープな特徴タグ（15文字以内）として出力してください。
     - ✕ 悪い例: 「魔法の世界に包まれた心温まる物語」（要素が合体した説明文）
     - ✕ 悪い例: 「異世界の不思議さをじっくり味わえる」（述語になっている）
-    - 〇 良い例: 「心温まるストーリー」
-    - 〇 良い例: 「幻想的な世界観」
     - 〇 良い例: 「魔法世界の冒険」
-    - 〇 良い例: 「丁寧な人物描写」
-  ・「長期的嗜好」にある単語を安易にジャンルへ合体させないでください。そのジャンルの世界観の中でどのように表現されるかの「視点・切り口」として記述してください。
+    - 〇 良い例: 「未知の惑星での遭遇」
+    - 〇 良い例: 「巨大建造物の探索」
+    - 〇 良い例: 「特殊能力によるアクション」
   ・映画のタイトルは含めないでください。
-  ・嗜好の大枠には合致するがミスマッチ要素とは異なる方向性を持つ要素を考える際、大枠のジャンルを変更しないでください（例：感動ドラマからアクションへ変更するのは禁止）。
-  ・ミスマッチ要素と嗜好の大枠には合致するがミスマッチ要素とは異なる方向性を持つ要素はできるだけ簡潔に長くなりすぎないようにしてください。
+  ・ミスマッチ要素とは異なる方向性を持つ要素を考える際、大枠のジャンルを変更しないでください（例：感動ドラマからアクションへ変更するのは禁止）。
   {long_term_constraint_note}
 
   ## 【直前推薦3作品の生の特徴フレーズ】
   {recent_movies_features_text}
 
-  ## 【推薦候補（17作品）の参考特徴リスト（positive導出用）】
+  ## 【positiveとpositve_example導出用のヒント】
   {feature_hints_text}
 
 {preference_section}
@@ -431,6 +450,7 @@ class MismatchReasoning:
 
   [
     {{
+      "target_preference": "ミスマッチ要素の予測元となった嗜好",
       "mismatch_target_features": ["直前3作品から特定した特徴フレーズ"],
       "reason": "なぜこの特徴がユーザーにとってミスマッチ（微妙の理由）だと考えられるかの考察",
       "mismatch": "ミスマッチ要素",
@@ -438,13 +458,271 @@ class MismatchReasoning:
       "positive_example": [
         "具体例1",
         "具体例2",
-        "具体例3"
+        "具体例3",
+        "具体例4",
       ]
     }}
   ]
   """
     return prompt
-    
+
+
+
+  def mismatch_reasoning_matched_watched_record_feature_no_hint(
+        self,
+        watch_record,
+        recent_movies_features_data,
+        short_term_like,
+        short_term_dislike,
+        long_term_like,
+        long_term_dislike,
+    ):
+        # 1. 従来のミスマッチ推論を実行
+        mismatch_result = self.infer_mismatch_v2_no_hint(
+            recent_movies_features_data,
+            short_term_like,
+            short_term_dislike,
+            long_term_like,
+            long_term_dislike,
+        )
+        
+        if mismatch_result.get("status") == "not_mismatch":
+            return { "status": "not_mismatch" }
+
+        mismatch_content = mismatch_result.get("content", [])
+
+        # ----------------------------------------------------
+        # ★追加: すべての positive_example を集めて一括でベクトル化する
+        # ----------------------------------------------------
+        all_pos_elems = []
+        for item in mismatch_content:
+            for pos_elem in item.get("positive_example", []):
+                if pos_elem and pos_elem not in all_pos_elems:
+                    all_pos_elems.append(pos_elem)
+
+        pos_embedding_dict = {}
+        if all_pos_elems:
+            # ご提示いただいた一括取得関数を使用
+            vectors = self.embedding_client.get_embedding_byList(all_pos_elems)
+            for elem, vec in zip(all_pos_elems, vectors):
+                pos_embedding_dict[elem] = vec
+        # ----------------------------------------------------
+
+        # 2. watch_record から int型の movie_ids リストを作成
+        watch_movie_ids = []
+        for item in watch_record:
+            try:
+                m_id = int(item.get("movie_id"))
+                watch_movie_ids.append(m_id)
+            except (ValueError, TypeError):
+                continue
+
+        # 3. Supabase から watch_record の映画の features を一括取得し、辞書からベクトルを引く
+        watch_feature_vectors_flat = []
+        watch_feature_titles_flat = []
+
+        if watch_movie_ids:
+            res = extract_movie_features_by_ids(watch_movie_ids)
+            for row in res.data or []:
+                title = row.get("title")
+                features = row.get("features") or []
+                if isinstance(features, list):
+                    for f in features:
+                        f_text = str(f).strip()
+                        if f_text and f_text in self.feature_embedding_dict:
+                            vec = self.feature_embedding_dict[f_text]
+                            watch_feature_vectors_flat.append(np.array(vec, dtype=np.float32))
+                            watch_feature_titles_flat.append(title)
+
+        # 視聴履歴のベクトル行列 (W, dim)
+        if watch_feature_vectors_flat:
+            W_matrix = np.vstack(watch_feature_vectors_flat).astype(np.float32)
+            W_norm = W_matrix / (np.linalg.norm(W_matrix, axis=1, keepdims=True) + 1e-9)
+        else:
+            W_norm = None
+
+        # 4. positive_example の各要素と視聴履歴特徴の類似度計算・マッピング
+        for item in mismatch_content:
+            positive_examples = item.get("positive_example", [])
+            mapped_examples = []
+
+            for pos_elem in positive_examples:
+                best_title = None
+                max_sim = 0.0
+
+                # ★ 事前取得した pos_embedding_dict からベクトルを取得して判定
+                if W_norm is not None and len(W_norm) > 0 and pos_elem in pos_embedding_dict:
+                    pos_vec = pos_embedding_dict[pos_elem]
+                    p_arr = np.array(pos_vec, dtype=np.float32)
+                    p_norm = p_arr / (np.linalg.norm(p_arr) + 1e-9)
+
+                    # コサイン類似度計算 (W_norm と p_norm のドット積)
+                    sims = np.dot(W_norm, p_norm)
+                    best_idx = np.argmax(sims)
+                    max_sim = float(sims[best_idx])
+                    
+                    # 類似度が閾値以上の場合のみ映画タイトルを紐付ける
+                    if max_sim >= self.THEREHOLD:
+                        best_title = watch_feature_titles_flat[best_idx]
+
+                # 指定されたフォーマットに格納
+                mapped_examples.append({
+                    "element": pos_elem,
+                    "title": best_title  # 閾値未満、または該当なしの場合は None
+                })
+
+            # positive_example を置き換え
+            item["positive_example"] = mapped_examples
+
+        # 5. ステータスを含めた辞書形式で返却
+        return {
+            "status": "mismatch",
+            "content": mismatch_content
+        }   
+
+
+
+  
+  def infer_mismatch_v2_no_hint(
+        self,
+        recent_movies_features_data,
+        short_term_like,
+        short_term_dislike,
+        long_term_like,
+        long_term_dislike,
+    ):
+        """ミスマッチのヒント（17作品の参考特徴リスト）を使用しない推論メソッド"""
+        # 引数がリストの場合は文字列に整形
+        st_like_str = self._format_preference(short_term_like)
+        st_dislike_str = self._format_preference(short_term_dislike)
+        lt_like_str = self._format_preference(long_term_like)
+        lt_dislike_str = self._format_preference(long_term_dislike)
+        
+        prompt = self._build_prompt_v2_no_hint(
+            recent_movies_features_data,
+            st_like_str,
+            st_dislike_str,
+            lt_like_str,
+            lt_dislike_str,
+        )
+        
+        response = self.llm_client.generate_response(
+            role=self.SYSTEM_ROLE,
+            prompt=prompt,
+            model=self.MODEL,
+            temperature=self.TEMPERATURE,
+            reasoning_level=self.REASONING_LEVEL
+        )
+        
+        if response.strip() == "not_mismatch":
+            return { "status" : "not_mismatch" }
+        
+        return { "status" : "mismatch", "content" : self._parse_json_response(response) }
+
+  def _build_prompt_v2_no_hint(
+        self,
+        recent_movies_features_data,
+        short_term_like,
+        short_term_dislike,
+        long_term_like,
+        long_term_dislike,
+    ):
+        recent_movies_features_text = self._format_features_list(recent_movies_features_data)
+        
+        mismatch_definition = "ユーザーの短期的嗜好(好み)または長期的嗜好(好み)の大枠には一致しているが、その具体的内容や解釈がユーザーの期待とズレている要素。"
+        preference_section = f"""\
+    ## ユーザーの嗜好情報
+    ・短期的嗜好（好み）: {short_term_like}
+    ・短期的嗜好（苦手/嫌い）: {short_term_dislike}
+    ・長期的嗜好（好み）: {long_term_like}
+    ・長期的嗜好（苦手/嫌い）: {long_term_dislike}"""
+            
+        long_term_constraint_note = "・ユーザーの「長期的嗜好（苦手）」に記載されている文字列をそのまま `mismatch` の値として出力することは厳禁です。"
+        
+        is_long_term_empty = not long_term_like or long_term_like.strip() in ["", "なし", "None", "[]", "特になし"]
+
+        if is_long_term_empty:
+            mismatch_definition = "ユーザーの短期的嗜好（好み）の大枠には一致しているが、その具体的内容や解釈がユーザーの期待とズレている要素。"
+            preference_section = f"""\
+        ## ユーザーの嗜好情報
+        ・短期的嗜好（好み）: {short_term_like}
+        ・短期的嗜好（苦手/嫌い）: {short_term_dislike}
+        """
+            long_term_constraint_note = ""
+
+        prompt = f"""\
+    ## ミスマッチの定義
+        ・{mismatch_definition}
+
+    ## タスク概要
+    ユーザーは直前に推薦された3作品に対して「微妙・何か違う」という否定的なフィードバックを示しています。
+    提示された【直前推薦3作品の生の特徴フレーズ】と【ユーザーの嗜好情報】を分析し、**なぜユーザーが微妙だと感じたのか、どの特徴のニュアンスや方向性がユーザーの期待とズレていたのか（ミスマッチ要素）**を推論してください。
+    一つの観点だけでなく、複数の観点から考えても構いません。
+
+    ## 推論の前提条件（最重要）
+    1. ユーザーは「微妙」と言っているため、3作品の特徴の中には嗜好にマッチしているが、その具体的内容がユーザーの期待と異なるミスマッチ要素が存在している可能性があります。
+    2. 「嗜好には合致しているが、その具体的内容がユーザーの期待と異なるのではないか？」という視点で特徴フレーズ（mismatch）を特定してください。
+
+    ## タスク手順
+    1. 【3作品の特徴分析】直前推薦3作品の特徴フレーズを観察し、作品間に共通する傾向や、特定の作品で目立つ特徴を整理します。
+    2. 【ミスマッチ原因の特定】ステップ1で整理した特徴とユーザーの嗜好を照らし合わせ、不満の原因を特定します。（`mismatch`）。
+       - ミスマッチ要素を特定する際は、必ず「ミスマッチの定義」に従ってください。
+       - `mismatch` は、直前3作品のどのような偏りや特徴が不満の原因になったのかを、**余計な説明文（「〜に寄り〜な方向性」など）をつけず、短くシャープな名詞句（20文字以内）**で記述してください。
+    3. 【方向性の異なる要素の選定】ミスマッチ要素は避けて、`target_preference`を維持したまま、そのジャンルや世界観特有の別の具体的な要素・仕掛け・切り口を選定します（`positive`）。
+       - `positive` は、「〜な演出」「〜する展開」といった長文にせず、**どのような方向性にシフトするのかを示す端的な名詞句（20文字以内）**で表現してください。
+       - `positive_example` は、`positive`を具体的に表す具体例にしてください。
+
+    ## ミスマッチ推論の例1
+    ・ユーザー嗜好: [短期的嗜好: SF・冒険]
+    ・直前3作品の特徴: ["タイムトラベルの謎解き", "歴史改変のサスペンス", "複雑な因果律"]
+    ・推論:
+      - mismatch: 「時間改変や因果律を読み解く頭脳戦的なSF要素」
+      - reason: ユーザーは「SF・冒険」を求めているが、「複雑な頭脳戦・謎解き」に偏っており、これがユーザーの期待するワクワクする冒険体験とズレて「微妙」と感じさせた可能性が高い。
+      - positive: 「未知の領域の探索やスケールの大きなダイナミックなSF体験」
+      - positive_example: ["巨大宇宙船での探索", "未知の惑星との遭遇", "サイバーパンクな都市描写"]
+
+    ## 制約事項
+    ・ユーザーの好む要素と重複したミスマッチ要素を推論しないでください。
+    ・`target_preference`は必ず、ユーザーの嗜好情報からそのまま抽出してください。
+    ・`positive_example` は絶対に「〜する物語」「〜なファンタジー」といった説明文・あらすじ文章にしないでください。
+    ・**必ず「体言止め（名詞句）」の短くシャープな特徴タグ（15文字以内）として出力してください。**
+      - ✕ 悪い例: 「魔法の世界に包まれた心温まる物語」（要素が合体した説明文）
+      - ✕ 悪い例: 「異世界の不思議さをじっくり味わえる」（述語になっている）
+      - 〇 良い例: 「幻想的な世界観」
+      - 〇 良い例: 「魔法世界の冒険」
+      - 〇 良い例: 「未知の惑星での遭遇」
+      - 〇 良い例: 「巨大建造物の探索」
+      - 〇 良い例: 「特殊能力によるアクション」
+    ・「長期的嗜好」にある単語を安易にジャンルへ合体させないでください。そのジャンルの世界観の中でどのように表現されるかの「視点・切り口」として記述してください。
+    ・映画のタイトルは含めないでください。
+    ・嗜好の大枠には合致するがミスマッチ要素とは異なる方向性を持つ要素を考える際、大枠のジャンルを変更しないでください（例：感動ドラマからアクションへ変更するのは禁止）。
+    {long_term_constraint_note}
+
+    ## 【直前推薦3作品の生の特徴フレーズ】
+    {recent_movies_features_text}
+
+    {preference_section}
+
+    ## 出力フォーマット
+    必ず以下のJSON配列形式で出力してください。真に根拠がなくミスマッチが推論できない場合のみ "not_mismatch" と出力してください。
+
+    [
+      {{
+        "target_preference": "ミスマッチ要素の予測元となった嗜好",
+        "mismatch_target_features": ["直前3作品から特定した特徴フレーズ"],
+        "reason": "なぜこの特徴がユーザーにとってミスマッチ（微妙の理由）だと考えられるかの考察",
+        "mismatch": "ミスマッチ要素",
+        "positive": "嗜好の大枠を維持したままミスマッチと方向性を変えた要素",
+        "positive_example": [
+          "具体例1",
+          "具体例2",
+          "具体例3"
+        ]
+      }}
+    ]
+    """
+        return prompt
+
 
   def _format_features_list(self, recent_movies_features):
     result = []
