@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+import httpx
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 from dotenv import load_dotenv
@@ -59,8 +60,17 @@ heavy_task_semaphore = asyncio.Semaphore(3)
 
 
 # Supabaseクエリをスレッドプールで非同期実行するためのヘルパー関数
-async def async_supabase_execute(query):
-    return await asyncio.to_thread(query.execute)
+# async def async_supabase_execute(query):
+    # return await asyncio.to_thread(query.execute)
+
+async def async_supabase_execute(query, retries=3, delay=0.5):
+    for attempt in range(retries):
+        try:
+            return await asyncio.to_thread(query.execute)
+        except (httpx.ReadError, httpx.ConnectError) as e:
+            if attempt == retries - 1:
+                raise e
+            await asyncio.sleep(delay * (2 ** attempt)) # 指数バックオフ
 
 
 def fetch_all_movies_from_supabase():
@@ -412,12 +422,20 @@ async def chat_endpoint(req: ChatMessageRequest):
                             long_term_dislike,
                             mismatch_hints,
                         )
+                        # mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature_no_hint(
+                        #     watch_record,
+                        #     features_dict,
+                        #     context.short_term_like,
+                        #     context.short_term_dislike,
+                        #     long_term_like,
+                        #     long_term_dislike,
+                        # )
                         return features_dict, common_features, mismatch_reasoning_result
 
                     features_dict, common_features, mismatch_reasoning_result = await asyncio.to_thread(
                         run_mismatch_pipeline
                     )
-
+                    print(mismatch_reasoning_result)
                     is_mismatch = mismatch_reasoning_result.get("status") == "mismatch"
                     if is_mismatch:
                         mismatch_content = mismatch_reasoning_result.get("content")
@@ -483,6 +501,7 @@ async def chat_endpoint(req: ChatMessageRequest):
                 0.70,
                 0.60,
             )
+            print(mismatch_hints)
 
         await async_supabase_execute(
             supabase.table("chat_sessions").update({
