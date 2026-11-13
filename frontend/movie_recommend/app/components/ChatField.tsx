@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
+import { useUserId } from "./UserIdProvider"; // システムタイプを取得するために必要であれば活用
 
 interface Message {
   role: "system" | "user";
@@ -12,6 +13,7 @@ interface ChatViewProps {
 }
 
 export default function ChatField({ sessionId }: ChatViewProps) {
+  const { selectedSystem } = useUserId(); // 現在選択中のシステムタイプ (A/B/C/D)
   const [messages, setMessages] = useState<Message[]>([
     { role: "system", content: "" },
   ]);
@@ -44,9 +46,9 @@ export default function ChatField({ sessionId }: ChatViewProps) {
       return;
     } 
     if (hasFetchedRef.current) {
-      return
+      return;
     }
-    hasFetchedRef.current= true;
+    hasFetchedRef.current = true;
     
     const fetchInitQuestion = async () => {
       queueRef.current = [];
@@ -189,8 +191,28 @@ export default function ChatField({ sessionId }: ChatViewProps) {
   };
 
   return (
- <div className="flex flex-col flex-1 w-full overflow-hidden bg-gray-50">
+    <div className="flex flex-col flex-1 w-full overflow-hidden bg-gray-50">
       
+      {/* --- ★ チャット画面上部の注意事項ヘッダーバー --- */}
+      <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5  text-blue-900  flex flex-col gap-1">
+        <div className="font-medium">
+          <span className="font-bold underline">システム{selectedSystem}での注意事項</span>：
+          {["A", "B", "C"].includes(selectedSystem ?? "") ? (
+            <span className="text-red-700 font-semibold ml-1">
+              1度目の推薦が行われたら、必ず「微妙です」と入力してください。
+              好みの入力において、映画名や人名の入力は禁止です。
+            </span>
+          ) : (
+            <span className="text-blue-800 ml-1">
+              推薦が2度行われるまで自由にチャットを続けてください。（映画名等の入力も可）
+            </span>
+          )}
+        </div>
+        <div>
+          推薦が2度行われたらGoogleFormのアンケートに回答してください。アンケート回答後、「システムを切り替える」でホーム画面に戻って次のシステムを選んでください。
+        </div>
+      </div>
+
       {/* メッセージ一覧エリア（ここだけが縦スクロールする） */}
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {/* 大画面でも横に広がりすぎないよう、中身を中央寄せしつつ最大幅を制限 */}
