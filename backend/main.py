@@ -73,7 +73,7 @@ async def async_supabase_execute(query, retries=3, delay=0.5):
 
 def fetch_all_movies_from_supabase():
     """Supabaseのmoviesテーブルからページネーションを使用して全件データを取得する（起動時同期処理）"""
-    print("Supabaseからmoviesテーブルのデータを取得中...")
+    # print("Supabaseからmoviesテーブルのデータを取得中...")
     all_rows = []
     batch_size = 1000
     start = 0
@@ -433,7 +433,7 @@ async def chat_endpoint(req: ChatMessageRequest):
                     features_dict, common_features, mismatch_reasoning_result = await asyncio.to_thread(
                         run_mismatch_pipeline
                     )
-                    print(mismatch_reasoning_result)
+                    # print(mismatch_reasoning_result)
                     is_mismatch = mismatch_reasoning_result.get("status") == "mismatch"
                     if is_mismatch:
                         mismatch_content = mismatch_reasoning_result.get("content")
@@ -499,7 +499,7 @@ async def chat_endpoint(req: ChatMessageRequest):
                 0.70,
                 0.60,
             )
-            print(mismatch_hints)
+            # print(mismatch_hints)
 
         await async_supabase_execute(
             supabase.table("chat_sessions").update({
