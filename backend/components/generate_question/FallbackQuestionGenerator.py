@@ -44,7 +44,6 @@ class FallbackQuestionGenerator(BaseQuestionGenerator):
         # ==========================================
         task_details = """
         ・選択肢(ヒント)を3～4つ提示して、「あなたの現在の好みはどれに近いですか？」のように聞いてください。
-        ・最後には、「具体的にどこが微妙だったかを自由に教えてください！」と締めくくってください。
         """
         
         user_preference_section = f"""
@@ -59,7 +58,6 @@ class FallbackQuestionGenerator(BaseQuestionGenerator):
         task_details = """
         ・選択肢(ヒント)を3～4つ提示して、「あなたの現在の好みはどれに近いですか？」のように聞いてください。
         ・長期的嗜好(苦手)に含まれる内容を選択肢に含めないようにしてください。
-        ・最後には、「具体的にどこが微妙だったかを自由に教えてください！」と締めくくってください。
         """
         
         user_preference_section = f"""
@@ -80,6 +78,7 @@ class FallbackQuestionGenerator(BaseQuestionGenerator):
 
 ## 制約事項
 ・「短期的嗜好によると」、「長期的嗜好によると」などの表現は不必要です。
+・現在の嗜好の具体化なので、嗜好に関係ない要素を付け加えないでください。
 
 {user_preference_section.strip()}
 """
