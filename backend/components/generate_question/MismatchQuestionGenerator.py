@@ -154,6 +154,7 @@ class MismatchQuestionGenerator(BaseQuestionGenerator):
 
 ## 制約事項
 - 「短期的嗜好である」「長期的嗜好である」という表現は付けないでください。ユーザーは長期的嗜好が何か理解していないため、自然な導入を意識してください。 
+- **関連映画が「none」の場合は、絶対に勝手に追加しないでください。**
 
 ## ミスマッチ要素を推論した情報
 {mismatch_str}
@@ -190,7 +191,7 @@ class MismatchQuestionGenerator(BaseQuestionGenerator):
                 if isinstance(ex, dict):
                     # {'element': '...', 'title': '...'} のような構造の場合
                     elem = ex.get("element", "")
-                    title = ex.get("title", "")
+                    title = ex.get("title", "none")
                     if title:
                         formatted_examples.append(f"{elem}（関連映画: {title}）")
                     else:
