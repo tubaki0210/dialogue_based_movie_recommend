@@ -199,7 +199,7 @@ export default function ChatField({ sessionId }: ChatViewProps) {
           <span className="font-bold underline">システム{selectedSystem}での注意事項</span>：
           {["A", "B", "C"].includes(selectedSystem ?? "") ? (
             <span className="text-red-700 font-semibold ml-1">
-              1度目の推薦が行われたら、必ず「微妙です」と入力してください。
+              1度目の推薦が行われたら、必ず「微妙」と入力してください。
               好みの入力において、映画名や人名の入力は禁止です。
             </span>
           ) : (
