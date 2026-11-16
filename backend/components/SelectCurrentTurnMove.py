@@ -26,9 +26,8 @@ class SelectCurrentTurnMove:
 現在のターンで行うべき適切な対話履歴を参照し、対話行為を選択肢の中から１つ選んでしてください
 
 ## 対話行為の選択肢
-・recommend : 推薦する
+・recommend : 映画を推薦する
 ・mismatch_question : 推薦に対してユーザーが不満を持った場合に、質問する
-・explanation : ユーザーが映画について尋ねた場合に、映画の説明を行う
 
 ## 対話行為の選択の基準
 ・推薦の後に、「他には？」などときたら再度recommendです
