@@ -59,7 +59,7 @@ export default function LoginView({ onSessionStarted }: LoginViewProps) {
       <ul className="list-disc list-inside space-y-1 leading-relaxed text-xs sm:text-sm">
         <li>各システム、<span className="font-semibold underline">推薦が2度(計6作品)行われるまで</span>対話を行ってください。</li>
         <li><span className="font-semibold text-red-600">システムA, B, Cでは、1度目の推薦が行われたら必ず「微妙」と入力してください。</span></li>
-        <li>システムA, B, Cでは、映画名や人名、年代（例: 「となりのトトロ」「新海誠」「2020年の映画」など）の好みの入力を禁止します。必ず「派手なアクション」「ファンタジー」等の内容に関する言葉を入力してください。</li>
+        <li>システムA, B, Cでは、映画名や人名、年代（例: 「となりのトトロ」「新海誠」「2020年の映画」など）の好みの入力を禁止します。必ず「派手なアクション」「ファンタジー」等の映画の内容に関する好みを入力してください。</li>
         <li>システムごとに異なる好みを入力しても大丈夫です。</li>
         <li>システムに対して、質問はしないでください。</li>
         <li>対話終了後は対話履歴を見ながらアンケートに回答し、ホーム画面から次のシステムを選択してください。</li>
