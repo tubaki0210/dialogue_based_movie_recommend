@@ -191,10 +191,10 @@ export default function ChatField({ sessionId }: ChatViewProps) {
   };
 
   return (
-    <div className="flex flex-col flex-1 w-full overflow-hidden bg-gray-50">
+<div className="flex flex-col flex-1 w-full h-full overflow-hidden bg-gray-50">
       
       {/* --- ★ チャット画面上部の注意事項ヘッダーバー --- */}
-      <div className="bg-blue-50 border-b border-blue-200 px-4 py-2.5  text-blue-900  flex flex-col gap-1">
+      <div className="bg-blue-50 border-b border-blue-200 px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm text-blue-900 flex flex-col gap-1 shrink-0">
         <div className="font-medium">
           <span className="font-bold underline">システム{selectedSystem}での注意事項</span>：
           {["A", "B", "C"].includes(selectedSystem ?? "") ? (
@@ -214,19 +214,19 @@ export default function ChatField({ sessionId }: ChatViewProps) {
       </div>
 
       {/* メッセージ一覧エリア（ここだけが縦スクロールする） */}
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3 sm:space-y-4">
         {/* 大画面でも横に広がりすぎないよう、中身を中央寄せしつつ最大幅を制限 */}
-        <div className="max-w-5xl mx-auto w-full space-y-4">
+        <div className="max-w-5xl mx-auto w-full space-y-3 sm:space-y-4">
           {messages.map((msg, idx) => (
             <div
               key={idx}
               className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
             >
               <div
-                className={`max-w-[80%] p-4 rounded-2xl leading-relaxed whitespace-pre-wrap shadow-sm ${
+                className={`max-w-[90%] sm:max-w-[80%] p-3.5 sm:p-4 rounded-2xl text-sm sm:text-base leading-relaxed whitespace-pre-wrap shadow-sm ${
                   msg.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-white border border-gray-200 text-gray-800"
+                    ? "bg-blue-600 text-white rounded-br-none sm:rounded-br-2xl"
+                    : "bg-white border border-gray-200 text-gray-800 rounded-bl-none sm:rounded-bl-2xl"
                 }`}
               >
                 {msg.content || (loading && idx === messages.length - 1 ? (
@@ -242,7 +242,7 @@ export default function ChatField({ sessionId }: ChatViewProps) {
       </div>
 
       {/* 入力フォームエリア（画面下部に固定） */}
-      <div className="bg-white border-t p-5 shrink-0">
+      <div className="bg-white border-t p-3 sm:p-5 shrink-0">
         <form onSubmit={handleSendMessage} className="max-w-4xl mx-auto flex gap-2">
           <input
             type="text"
@@ -251,18 +251,17 @@ export default function ChatField({ sessionId }: ChatViewProps) {
             onChange={(e) => setInput(e.target.value)}
             placeholder="好みや嫌いな要素を入力"
             disabled={loading}
-            className="flex-1 border rounded-lg px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
+            className="flex-1 border rounded-lg px-3.5 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:bg-gray-100"
           />
           <button
             type="submit"
             disabled={loading || !input.trim()}
-            className="bg-blue-600 text-white px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition disabled:bg-gray-300"
+            className="bg-blue-600 text-white px-4 sm:px-5 py-2.5 rounded-lg text-sm font-semibold hover:bg-blue-700 transition disabled:bg-gray-300 shrink-0"
           >
             送信
           </button>
         </form>
       </div>
-
     </div>
   );
 }
