@@ -21,18 +21,21 @@ export default function Home() {
   };
 
   return (
-    <main className="flex flex-col h-screen w-full font-sans bg-white overflow-hidden p-3">
-      <header className="py-3 border-b text-center shrink-0 flex justify-between items-center px-4">
-        <div className="w-24"></div> {/* 左右バランス用スペース */}
-        <h1 className="text-xl font-bold text-gray-800">
+    <main className="flex flex-col h-screen w-full font-sans bg-white overflow-hidden p-2 sm:p-3">
+      <header className="py-2.5 sm:py-3 border-b text-center shrink-0 flex flex-col sm:flex-row justify-between items-center px-2 sm:px-4 gap-2 sm:gap-0">
+        {/* スマホでは非表示 or 小さく、PCではバランス用スペース */}
+        <div className="hidden sm:block w-24"></div> 
+        
+        <h1 className="text-base sm:text-xl font-bold text-gray-800 leading-tight">
           対話型映画推薦システム
-          {currentSystem && <span className="text-blue-500">(システム{currentSystem.toUpperCase()})</span>}
+          {currentSystem && <span className="text-blue-500 ml-1">(システム{currentSystem.toUpperCase()})</span>}
         </h1>
-        <div className="text-right">
+
+        <div className="text-right w-full sm:w-auto flex justify-center sm:justify-end">
           {sessionId && (
             <button
               onClick={handleResetSession}
-              className="border-2 border-blue-300 p-3 font-bold bg-blue-200 hover:bg-blue-400 rounded-2xl"
+              className="border-2 border-blue-300 px-3 py-1.5 sm:p-3 text-xs sm:text-sm font-bold bg-blue-200 hover:bg-blue-400 rounded-xl sm:rounded-2xl transition"
             >
               システムを切り替える
             </button>
@@ -41,7 +44,7 @@ export default function Home() {
       </header>
 
       {!sessionId ? (
-        <div className="flex-1 flex items-center justify-center max-w-xl mx-auto w-full">
+        <div className="flex-1 flex items-center justify-center max-w-xl mx-auto w-full p-2">
           <LoginView onSessionStarted={handleSessionStarted} />
         </div>
       ) : (
