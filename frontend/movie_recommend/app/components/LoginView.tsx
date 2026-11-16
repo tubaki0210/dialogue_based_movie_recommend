@@ -48,8 +48,8 @@ export default function LoginView({ onSessionStarted }: LoginViewProps) {
   };
 
   return (
-<div className="flex flex-col justify-start items-center min-h-[100dvh] w-full p-4 pb-12 overflow-y-auto">
-  <form onSubmit={handleStartSession} className="w-full max-w-lg flex flex-col gap-5 p-6 border rounded-xl shadow-md bg-gray-50 my-4">
+<div className="flex flex-col justify-start items-center h-[100dvh] w-full p-4 overflow-y-auto">
+  <form onSubmit={handleStartSession} className="w-full max-w-lg flex flex-col gap-5 p-6 border rounded-xl shadow-md bg-gray-50 my-auto mb-20">
 
     {/* --- 注意事項ボックス --- */}
     <div className="bg-amber-50 border border-amber-200 p-4 rounded-lg text-amber-900 space-y-2">
