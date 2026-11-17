@@ -423,7 +423,7 @@ async def chat_endpoint(req: ChatMessageRequest):
 
                     def run_mismatch_pipeline():
                         features_dict = extractor.extract(recent_rec)
-                        common_features = movie_feature_combiner.extract_common_features(features_dict)
+                        # common_features = movie_feature_combiner.extract_common_features(features_dict)
                         mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature(
                             watch_record,
                             features_dict,
@@ -441,9 +441,9 @@ async def chat_endpoint(req: ChatMessageRequest):
                         #     long_term_like,
                         #     long_term_dislike,
                         # )
-                        return features_dict, common_features, mismatch_reasoning_result
+                        return mismatch_reasoning_result
 
-                    features_dict, common_features, mismatch_reasoning_result = await asyncio.to_thread(
+                    mismatch_reasoning_result = await asyncio.to_thread(
                         run_mismatch_pipeline
                     )
                     # print(mismatch_reasoning_result)
@@ -455,27 +455,8 @@ async def chat_endpoint(req: ChatMessageRequest):
                             question_manager.generate_question, "mismatch", context
                         )
                     else:
-                        def run_unmismatch_pipeline():
-                            un_sim_cluster = un_sim_extractor.extract(common_features, context.short_term_like)
-                            return un_mismatch_extractor.reasoning(
-                                un_sim_cluster,
-                                context.short_term_like,
-                                context.short_term_dislike,
-                                long_term_like,
-                                long_term_dislike,
-                            )
-
-                        un_mismatch_result = await asyncio.to_thread(run_unmismatch_pipeline)
-                        is_unmismatch = un_mismatch_result.get("status") == "unmismatch"
-
-                        if is_unmismatch:
-                            context.un_mismatch_results = un_mismatch_result
-                            stream_generator = await asyncio.to_thread(
-                                question_manager.generate_question, "not_mismatch", context
-                            )
-                        else:
-                            stream_generator = await asyncio.to_thread(
-                                question_manager.generate_question, "fallback", context
+                        stream_generator = await asyncio.to_thread(
+                            question_manager.generate_question, "fallback", context
                             )
             else:
                 stream_generator = await asyncio.to_thread(
