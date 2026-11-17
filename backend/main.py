@@ -1,6 +1,7 @@
 import asyncio
 import json
 import os
+import httpcore
 import re
 import httpx
 from pathlib import Path
@@ -67,10 +68,11 @@ async def async_supabase_execute(query, retries=3, delay=0.5):
     for attempt in range(retries):
         try:
             return await asyncio.to_thread(query.execute)
-        except (httpx.ReadError, httpx.ConnectError) as e:
+        except (httpx.ReadError, httpx.ConnectError, httpcore.RemoteProtocolError, httpx.RemoteProtocolError) as e:
             if attempt == retries - 1:
                 raise e
-            await asyncio.sleep(delay * (2 ** attempt)) # 指数バックオフ
+            # コネクション切断時は少し長めに待ってからリトライする
+            await asyncio.sleep(delay * (2 ** attempt))
 
 
 def fetch_all_movies_from_supabase():
@@ -310,17 +312,26 @@ async def chat_endpoint(req: ChatMessageRequest):
     system_type = str(session_data.get("system_type", "A")).upper()
 
     # 2. ユーザー情報・視聴履歴の非同期取得
-    user_res_task = async_supabase_execute(supabase.table("users").select("*").eq("id", user_id))
-    ratings_res_task = async_supabase_execute(
+    # user_res_task = async_supabase_execute(supabase.table("users").select("*").eq("id", user_id))
+    # ratings_res_task = async_supabase_execute(
+    #     supabase.table("ratings").select("movie_id, title, rating").eq("user_id", user_id)
+    # )
+    # msg_res_task = async_supabase_execute(
+    #     supabase.table("chat_messages").select("*").eq("session_id", session_id).order("created_at")
+    # )
+
+    # 2. ユーザー情報・視聴履歴の順次取得（HTTP/2のコネクション切断を防ぐため）
+    user_res = await async_supabase_execute(supabase.table("users").select("*").eq("id", user_id))
+    ratings_res = await async_supabase_execute(
         supabase.table("ratings").select("movie_id, title, rating").eq("user_id", user_id)
     )
-    msg_res_task = async_supabase_execute(
+    msg_res = await async_supabase_execute(
         supabase.table("chat_messages").select("*").eq("session_id", session_id).order("created_at")
     )
 
-    user_res, ratings_res, msg_res = await asyncio.gather(
-        user_res_task, ratings_res_task, msg_res_task
-    )
+    # user_res, ratings_res, msg_res = await asyncio.gather(
+    #     user_res_task, ratings_res_task, msg_res_task
+    # )
 
     if not user_res.data:
         raise HTTPException(status_code=404, detail="ユーザー情報が見つかりませんでした")
