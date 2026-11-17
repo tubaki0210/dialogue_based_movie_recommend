@@ -46,9 +46,9 @@ app = FastAPI(title="Movie Recommendation API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "*",
-        # "http://localhost:3000",               
-        # "https://dialogue-based-movie-recommend-app.vercel.app",
+        "http://localhost:3000",               
+        "https://dialogue-based-movie-recommend-app.vercel.app",
+        "https://dialogue-based-movie-recommend-h35c0tdgv-tubakis-projects.vercel.app"
     ],
     allow_credentials=True,
     allow_methods=["*"],
