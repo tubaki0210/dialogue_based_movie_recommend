@@ -464,17 +464,27 @@ async def chat_endpoint(req: ChatMessageRequest):
                             )
                         else:
                             def run_mismatch_pipeline():
-                                features_dict = extractor.extract(recent_rec)
-                                mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature(
-                                    watch_record,
-                                    features_dict,
-                                    context.short_term_like,
-                                    context.short_term_dislike,
-                                    long_term_like,
-                                    long_term_dislike,
-                                    mismatch_hints,
-                                )
-                                return mismatch_reasoning_result
+                                max_retries = 2
+                                for attempt in range(max_retries + 1):
+                                    try:
+                                        features_dict = extractor.extract(recent_rec)
+                                        mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature(
+                                            watch_record,
+                                            features_dict,
+                                            context.short_term_like,
+                                            context.short_term_dislike,
+                                            long_term_like,
+                                            long_term_dislike,
+                                            mismatch_hints,
+                                        )
+                                        return mismatch_reasoning_result
+                                    except Exception as e:
+                                        print(
+                                            f"[WARN] session={session_id} mismatch pipeline attempt {attempt + 1} failed: {type(e).__name__}: {e}"
+                                        )
+                                        if attempt == max_retries:
+                                            raise e
+                                        time.sleep(1.0 * (attempt + 1))
 
                             mismatch_reasoning_result = await asyncio.to_thread(
                                 run_mismatch_pipeline
