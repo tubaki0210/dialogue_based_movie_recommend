@@ -127,71 +127,102 @@ export default function ChatField({ sessionId }: ChatViewProps) {
     return () => clearInterval(timer);
   }, [loading]);
 
-  const handleSendMessage = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!input.trim() || !sessionId || loading) return;
+const handleSendMessage = async (e: React.FormEvent) => {
+  e.preventDefault();
+  if (!input.trim() || !sessionId || loading) return;
 
-    const userMsg = input.trim();
-    setInput("");
+  const userMsg = input.trim();
+  setInput("");
 
-    setMessages((prev) => [
-      ...prev,
-      { role: "user", content: userMsg },
-      { role: "system", content: "" },
-    ]);
+  setMessages((prev) => [
+    ...prev,
+    { role: "user", content: userMsg },
+    { role: "system", content: "" },
+  ]);
 
-    queueRef.current = [];
-    isStreamDoneRef.current = false;
-    setLoading(true);
+  queueRef.current = [];
+  isStreamDoneRef.current = false;
+  setLoading(true);
+
+  const MAX_RETRIES = 1;
+  let attempt = 0;
+  let hasReceivedChunk = false;
 
   try {
-    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ session_id: sessionId, user_input: userMsg }),
-    });
+    while (true) {
+      try {
+        const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ session_id: sessionId, user_input: userMsg }),
+        });
 
-    if (!response.ok) {
-      throw new Error(`HTTPエラー: ${response.status}`);
-    }
-    if (!response.body) throw new Error("レスポンスボディが空です。");
-
-    const reader = response.body.getReader();
-    const decoder = new TextDecoder("utf-8");
-    let done = false;
-
-    while (!done) {
-      const { value, done: doneReading } = await reader.read();
-      done = doneReading;
-      const chunkValue = decoder.decode(value, { stream: true });
-
-      const lines = chunkValue.split("\n\n");
-      for (const line of lines) {
-        const trimmedLine = line.trim();
-        if (trimmedLine.startsWith("data:")) {
-          const dataStr = trimmedLine.replace("data:", "").trim();
-          if (dataStr === "[DONE]") {
-            done = true;
-            break;
-          }
-
-          try {
-            const parsed = JSON.parse(dataStr);
-            if (parsed.content) {
-              queueRef.current.push(...parsed.content.split(""));
-            }
-          } catch (jsonErr) {}
+        if (!response.ok) {
+          throw new Error(`HTTPエラー: ${response.status}`);
         }
+        if (!response.body) throw new Error("レスポンスボディが空です。");
+
+        const reader = response.body.getReader();
+        const decoder = new TextDecoder("utf-8");
+        let done = false;
+
+        while (!done) {
+          const { value, done: doneReading } = await reader.read();
+          done = doneReading;
+          if (value) {
+            const chunkValue = decoder.decode(value, { stream: true });
+
+            const lines = chunkValue.split("\n\n");
+            for (const line of lines) {
+              const trimmedLine = line.trim();
+              if (trimmedLine.startsWith("data:")) {
+                const dataStr = trimmedLine.replace("data:", "").trim();
+                if (dataStr === "[DONE]") {
+                  done = true;
+                  break;
+                }
+
+                try {
+                  const parsed = JSON.parse(dataStr);
+                  if (parsed.error) {
+                    throw new Error(parsed.error);
+                  }
+                  if (parsed.content) {
+                    hasReceivedChunk = true;
+                    queueRef.current.push(...parsed.content.split(""));
+                  }
+                } catch (jsonErr) {
+                  if (!(jsonErr instanceof SyntaxError)) {
+                    throw jsonErr;
+                  }
+                }
+              }
+            }
+          }
+        }
+
+        // 正常完了
+        break;
+      } catch (error) {
+        console.error(`Chat stream error (attempt ${attempt + 1}):`, error);
+
+        // まだ1文字も受け取っておらず、リトライ上限未満なら1回送り直す
+        if (!hasReceivedChunk && attempt < MAX_RETRIES) {
+          attempt += 1;
+          queueRef.current = [];
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          continue;
+        }
+
+        alert("通信エラーが発生しました。");
+        setLoading(false);
+        break;
       }
     }
-  } catch (error) {
-    console.error("Chat stream error:", error);
-    alert("通信エラーが発生しました。");
-    setLoading(false);
   } finally {
     isStreamDoneRef.current = true;
   }
-}
+};
 
   return (
   <div className="flex flex-col flex-1 w-full h-full overflow-hidden bg-gray-50">    
