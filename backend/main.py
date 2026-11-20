@@ -1,13 +1,15 @@
 import asyncio
 import json
 import os
+import time
+import traceback
 import httpcore
 import re
 import httpx
 from pathlib import Path
 from typing import AsyncGenerator, Optional
 from dotenv import load_dotenv
-
+from postgrest.exceptions import APIError
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
@@ -47,9 +49,9 @@ app = FastAPI(title="Movie Recommendation API")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
-        "http://localhost:3000",               
+        "http://localhost:3000",
         "https://dialogue-based-movie-recommend-app.vercel.app",
-        "https://dialogue-based-movie-recommend-h35c0tdgv-tubakis-projects.vercel.app"
+        "https://dialogue-based-movie-recommend-h35c0tdgv-tubakis-projects.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -59,25 +61,45 @@ app.add_middleware(
 # 【追加】重い計算・LLM処理が同時に何件も走ってサーバーがパンクするのを防ぐためのセマフォ（例: 最大3件まで同時実行）
 heavy_task_semaphore = asyncio.Semaphore(3)
 
+TRANSIENT_HTTP_EXCEPTIONS = (
+    httpx.ReadError,
+    httpx.ConnectError,
+    httpx.WriteError,
+    httpx.ReadTimeout,
+    httpx.ConnectTimeout,
+    httpx.WriteTimeout,
+    httpx.PoolTimeout,
+    httpcore.ReadError,
+    httpcore.ConnectError,
+    httpcore.WriteError,
+    httpcore.ReadTimeout,
+    httpcore.ConnectTimeout,
+    httpcore.WriteTimeout,
+    httpcore.RemoteProtocolError,
+)
+
+
+def _is_retryable_api_error(err: APIError) -> bool:
+    code = str(getattr(err, "code", "") or "")
+    return code in {"500", "502", "503", "504"}
 
 # Supabaseクエリをスレッドプールで非同期実行するためのヘルパー関数
-# async def async_supabase_execute(query):
-    # return await asyncio.to_thread(query.execute)
-
 async def async_supabase_execute(query, retries=3, delay=0.5):
     for attempt in range(retries):
         try:
             return await asyncio.to_thread(query.execute)
-        except (httpx.ReadError, httpx.ConnectError, httpcore.RemoteProtocolError, httpx.RemoteProtocolError) as e:
+        except TRANSIENT_HTTP_EXCEPTIONS as e:
             if attempt == retries - 1:
                 raise e
-            # コネクション切断時は少し長めに待ってからリトライする
-            await asyncio.sleep(delay * (2 ** attempt))
+            await asyncio.sleep(delay * (2**attempt))
+        except APIError as e:
+            if not _is_retryable_api_error(e) or attempt == retries - 1:
+                raise e
+            await asyncio.sleep(delay * (2**attempt))
 
 
 def fetch_all_movies_from_supabase():
     """Supabaseのmoviesテーブルからページネーションを使用して全件データを取得する（起動時同期処理）"""
-    # print("Supabaseからmoviesテーブルのデータを取得中...")
     all_rows = []
     batch_size = 1000
     start = 0
@@ -143,7 +165,9 @@ llm_reranker = LLMReranker(llm_client)
 recommend_manager = RecommendManager(ease_predictor, content_base_predictor, llm_reranker)
 extractor = MovieFeatureExtractor(llm_client)
 movie_feature_combiner = CommonFeatureExtractor(embedding_client)
-mismatch_predictor = MismatchReasoning(llm_client, embedding_client, content_base_predictor.feature_embedding_dict)
+mismatch_predictor = MismatchReasoning(
+    llm_client, embedding_client, content_base_predictor.feature_embedding_dict
+)
 un_sim_extractor = ExtractUnSimCluster(embedding_client)
 un_mismatch_extractor = UnMismatchReasoning(llm_client)
 base_line_recommender = BaseLineRecommend(llm_client)
@@ -160,7 +184,10 @@ def extract_recommend_title(recommend_response: str) -> set:
 def extract_recent_recommend_response(dialogue: list) -> Optional[str]:
     """対話履歴から直近の推薦応答（category='recommend'）を取得"""
     for dialogue_ele in reversed(dialogue):
-        if dialogue_ele.get("role") == "system" and dialogue_ele.get("category") == "recommend":
+        if (
+            dialogue_ele.get("role") == "system"
+            and dialogue_ele.get("category") == "recommend"
+        ):
             return dialogue_ele.get("content")
     return None
 
@@ -267,7 +294,7 @@ async def stream_init_question(req: InitQuestionRequest):
 
     context = QuestionContext(user_profile=user_data)
 
-    # 初期質問生成の同期処理を別スレッドで取得（ここにもセマフォを適用したい場合は `async with heavy_task_semaphore:` を使えます）
+    # 初期質問生成の同期処理を別スレッドで取得
     async with heavy_task_semaphore:
         first_stream = await asyncio.to_thread(
             question_manager.generate_question, "first", context
@@ -297,232 +324,273 @@ async def stream_init_question(req: InitQuestionRequest):
 # --- 3. チャット API ---
 @app.post("/api/chat")
 async def chat_endpoint(req: ChatMessageRequest):
+    start_time = time.monotonic()
     session_id = req.session_id
     user_input = req.user_input
-
-    # 1. セッションデータの取得
-    sess_res = await async_supabase_execute(
-        supabase.table("chat_sessions").select("*").eq("id", session_id)
-    )
-    if not sess_res.data:
-        raise HTTPException(status_code=404, detail="セッションが見つかりませんでした")
-
-    session_data = sess_res.data[0]
-    user_id = session_data["user_id"]
-    system_type = str(session_data.get("system_type", "A")).upper()
-
-    # 2. ユーザー情報・視聴履歴の非同期取得
-    # user_res_task = async_supabase_execute(supabase.table("users").select("*").eq("id", user_id))
-    # ratings_res_task = async_supabase_execute(
-    #     supabase.table("ratings").select("movie_id, title, rating").eq("user_id", user_id)
-    # )
-    # msg_res_task = async_supabase_execute(
-    #     supabase.table("chat_messages").select("*").eq("session_id", session_id).order("created_at")
-    # )
-
-    # 2. ユーザー情報・視聴履歴の順次取得（HTTP/2のコネクション切断を防ぐため）
-    user_res = await async_supabase_execute(supabase.table("users").select("*").eq("id", user_id))
-    ratings_res = await async_supabase_execute(
-        supabase.table("ratings").select("movie_id, title, rating").eq("user_id", user_id)
-    )
-    msg_res = await async_supabase_execute(
-        supabase.table("chat_messages").select("*").eq("session_id", session_id).order("created_at")
-    )
-
-    # user_res, ratings_res, msg_res = await asyncio.gather(
-    #     user_res_task, ratings_res_task, msg_res_task
-    # )
-
-    if not user_res.data:
-        raise HTTPException(status_code=404, detail="ユーザー情報が見つかりませんでした")
-    user_row = user_res.data[0]
-
-    watch_record = ratings_res.data if ratings_res.data else []
-
-    dialogue_list = [
-        {
-            "role": m["role"],
-            "category": m.get("category"),
-            "content": m["content"],
-        }
-        for m in msg_res.data
-    ]
-
-    if system_type in ["B", "D"]:
-        long_term_like = []
-        long_term_dislike = []
-    else:
-        long_term_like = user_row.get("long_term_like") or []
-        long_term_dislike = user_row.get("long_term_dislike") or []
-
-    user_data = {
-        "id": user_id,
-        "like_long_preference": long_term_like,
-        "dislike_long_preference": long_term_dislike,
-        "watch_record": watch_record,
-        "short_term": {
-            "like": session_data.get("short_term_like", []),
-            "dislike": session_data.get("short_term_dislike", []),
-        },
-    }
-
-    already_recommend = set(session_data.get("already_recommend") or [])
-    move_history = session_data.get("move_history") or []
-    mismatch_hints = session_data.get("mismatch_hint", [])
-
-    context = QuestionContext(user_profile=user_data)
 
     stream_generator = None
     current_turn_move = None
     stage1_candidate = []
     short_term_like_vec = None
+    context = None
+    already_recommend = set()
+    move_history = []
+    mismatch_hints = []
 
-    # --- 【セマフォ適用】重い処理のブロック全体をセマフォで保護 ---
-    async with heavy_task_semaphore:
-        # システムD（ベースライン）
-        if system_type == "D":
-            stream_generator = await asyncio.to_thread(
-                base_line_recommender.generate_response, user_input, dialogue_list
-            )
+    try:
+        # 1. セッションデータの取得
+        sess_res = await async_supabase_execute(
+            supabase.table("chat_sessions").select("*").eq("id", session_id)
+        )
+        if not sess_res.data:
+            raise HTTPException(status_code=404, detail="セッションが見つかりませんでした")
 
-        # システムA, B, C
+        session_data = sess_res.data[0]
+        user_id = session_data["user_id"]
+        system_type = str(session_data.get("system_type", "A")).upper()
+
+        # 2. ユーザー情報・視聴履歴の順次取得（HTTP/2のコネクション切断を防ぐため）
+        user_res = await async_supabase_execute(
+            supabase.table("users").select("*").eq("id", user_id)
+        )
+        ratings_res = await async_supabase_execute(
+            supabase.table("ratings").select("movie_id, title, rating").eq("user_id", user_id)
+        )
+        msg_res = await async_supabase_execute(
+            supabase.table("chat_messages")
+            .select("*")
+            .eq("session_id", session_id)
+            .order("created_at")
+        )
+
+        if not user_res.data:
+            raise HTTPException(status_code=404, detail="ユーザー情報が見つかりませんでした")
+        user_row = user_res.data[0]
+
+        watch_record = ratings_res.data if ratings_res.data else []
+
+        dialogue_list = [
+            {
+                "role": m["role"],
+                "category": m.get("category"),
+                "content": m["content"],
+            }
+            for m in msg_res.data
+        ]
+
+        if system_type in ["B", "D"]:
+            long_term_like = []
+            long_term_dislike = []
         else:
-            current_turn_move = await asyncio.to_thread(
-                current_move_selector.select_move, user_input, dialogue_list, move_history
-            )
-            move_history.append(current_turn_move)
+            long_term_like = user_row.get("long_term_like") or []
+            long_term_dislike = user_row.get("long_term_dislike") or []
 
-            if current_turn_move == "recommend":
-                result_preferences = await asyncio.to_thread(
-                    pref_extractor.extract_user_preferences,
+        user_data = {
+            "id": user_id,
+            "like_long_preference": long_term_like,
+            "dislike_long_preference": long_term_dislike,
+            "watch_record": watch_record,
+            "short_term": {
+                "like": session_data.get("short_term_like") or [],
+                "dislike": session_data.get("short_term_dislike") or [],
+            },
+        }
+
+        already_recommend = set(session_data.get("already_recommend") or [])
+        move_history = list(session_data.get("move_history") or [])
+        mismatch_hints = session_data.get("mismatch_hint") or []
+
+        context = QuestionContext(user_profile=user_data)
+
+        # --- 【セマフォ適用】重い処理のブロック全体をセマフォで保護 ---
+        async with heavy_task_semaphore:
+            # システムD（ベースライン）
+            if system_type == "D":
+                current_turn_move = "baseline"
+                stream_generator = await asyncio.to_thread(
+                    base_line_recommender.generate_response, user_input, dialogue_list
+                )
+
+            # システムA, B, C
+            else:
+                current_turn_move = await asyncio.to_thread(
+                    current_move_selector.select_move,
                     user_input,
                     dialogue_list,
-                    context.short_term_like,
-                    context.short_term_dislike,
+                    move_history,
                 )
-                context.update_short_term_preference(result_preferences)
+                move_history.append(current_turn_move)
 
-                raw_stream_generator, stage1_candidate, short_term_like_vec = await asyncio.to_thread(
-                    recommend_manager.recommend,
-                    watch_record,
-                    already_recommend,
-                    context.short_term_like,
-                    context.short_term_dislike,
-                    long_term_like,
-                    long_term_dislike,
-                )
-                stream_generator = replace_id_to_title_stream(raw_stream_generator, movie_metadata)
+                if current_turn_move == "recommend":
+                    result_preferences = await asyncio.to_thread(
+                        pref_extractor.extract_user_preferences,
+                        user_input,
+                        dialogue_list,
+                        context.short_term_like,
+                        context.short_term_dislike,
+                    )
+                    context.update_short_term_preference(result_preferences)
 
-            elif current_turn_move == "mismatch_question":
-                if system_type == "C":
+                    (
+                        raw_stream_generator,
+                        stage1_candidate,
+                        short_term_like_vec,
+                    ) = await asyncio.to_thread(
+                        recommend_manager.recommend,
+                        watch_record,
+                        already_recommend,
+                        context.short_term_like,
+                        context.short_term_dislike,
+                        long_term_like,
+                        long_term_dislike,
+                    )
+                    stream_generator = replace_id_to_title_stream(
+                        raw_stream_generator, movie_metadata
+                    )
+                
+                elif current_turn_move == "mismatch_question":
+                    if system_type == "C":
+                        stream_generator = await asyncio.to_thread(
+                            question_manager.generate_question, "fallback", context
+                        )
+                    else:
+                        recent_rec = extract_recent_recommend_response(dialogue_list)
+                        if not recent_rec:
+                            print(
+                                f"[WARN] session={session_id} mismatch_question without recent_rec -> fallback"
+                            )
+                            stream_generator = await asyncio.to_thread(
+                                question_manager.generate_question, "fallback", context
+                            )
+                        else:
+                            def run_mismatch_pipeline():
+                                features_dict = extractor.extract(recent_rec)
+                                mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature(
+                                    watch_record,
+                                    features_dict,
+                                    context.short_term_like,
+                                    context.short_term_dislike,
+                                    long_term_like,
+                                    long_term_dislike,
+                                    mismatch_hints,
+                                )
+                                return mismatch_reasoning_result
+
+                            mismatch_reasoning_result = await asyncio.to_thread(
+                                run_mismatch_pipeline
+                            )
+                            is_mismatch = (
+                                mismatch_reasoning_result.get("status") == "mismatch"
+                            )
+                            if is_mismatch:
+                                mismatch_content = mismatch_reasoning_result.get(
+                                    "content"
+                                )
+                                context.mismatch_results = mismatch_content
+                                stream_generator = await asyncio.to_thread(
+                                    question_manager.generate_question,
+                                    "mismatch",
+                                    context,
+                                )
+                            else:
+                                stream_generator = await asyncio.to_thread(
+                                    question_manager.generate_question,
+                                    "fallback",
+                                    context,
+                                )
+                else:
                     stream_generator = await asyncio.to_thread(
                         question_manager.generate_question, "fallback", context
                     )
-                else:
-                    recent_rec = extract_recent_recommend_response(dialogue_list)
 
-                    def run_mismatch_pipeline():
-                        features_dict = extractor.extract(recent_rec)
-                        # common_features = movie_feature_combiner.extract_common_features(features_dict)
-                        mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature(
-                            watch_record,
-                            features_dict,
-                            context.short_term_like,
-                            context.short_term_dislike,
-                            long_term_like,
-                            long_term_dislike,
-                            mismatch_hints,
-                        )
-                        # mismatch_reasoning_result = mismatch_predictor.mismatch_reasoning_matched_watched_record_feature_no_hint(
-                        #     watch_record,
-                        #     features_dict,
-                        #     context.short_term_like,
-                        #     context.short_term_dislike,
-                        #     long_term_like,
-                        #     long_term_dislike,
-                        # )
-                        return mismatch_reasoning_result
+        print(
+            f"[INFO] session={session_id} move={current_turn_move} elapsed_before_stream={time.monotonic() - start_time:.2f}s"
+        )
 
-                    mismatch_reasoning_result = await asyncio.to_thread(
-                        run_mismatch_pipeline
-                    )
-                    # print(mismatch_reasoning_result)
-                    is_mismatch = mismatch_reasoning_result.get("status") == "mismatch"
-                    if is_mismatch:
-                        mismatch_content = mismatch_reasoning_result.get("content")
-                        context.mismatch_results = mismatch_content
-                        stream_generator = await asyncio.to_thread(
-                            question_manager.generate_question, "mismatch", context
-                        )
-                    else:
-                        stream_generator = await asyncio.to_thread(
-                            question_manager.generate_question, "fallback", context
-                            )
-            else:
-                stream_generator = await asyncio.to_thread(
-                    question_manager.generate_question, "fallback", context
-                )
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(
+            f"[ERROR] session={session_id} in chat_endpoint: {type(e).__name__}: {e}"
+        )
+        traceback.print_exc()
+        raise HTTPException(
+            status_code=500, detail="チャット処理中にエラーが発生しました"
+        )
 
     # 4. SSEイベントストリームの非同期生成
     async def event_generator() -> AsyncGenerator[str, None]:
         nonlocal mismatch_hints
         full_system_res = ""
 
-        for chunk in stream_generator:
-            full_system_res += chunk
-            yield f"data: {json.dumps({'content': chunk})}\n\n"
-            await asyncio.sleep(0)
+        try:
+            for chunk in stream_generator:
+                full_system_res += chunk
+                yield f"data: {json.dumps({'content': chunk})}\n\n"
+                await asyncio.sleep(0)
 
-        if current_turn_move == "recommend":
-            rec_movie_set = extract_recommend_title(full_system_res)
-            already_recommend.update(rec_movie_set)
+            if current_turn_move == "recommend":
+                rec_movie_set = extract_recommend_title(full_system_res)
+                already_recommend.update(rec_movie_set)
 
-            movie_ids = [
-                movie["movie_id"]
-                for movie in stage1_candidate
-                if movie["title"] not in rec_movie_set
-            ]
+                movie_ids = [
+                    movie["movie_id"]
+                    for movie in stage1_candidate
+                    if movie["title"] not in rec_movie_set
+                ]
 
-            mismatch_hints = await asyncio.to_thread(
-                hint_extractor.extract_hints,
-                movie_ids,
-                short_term_like_vec,
-                context.short_term_like,
-                20,
-                0.40,
-                0.70,
-                0.60,
+                mismatch_hints = await asyncio.to_thread(
+                    hint_extractor.extract_hints,
+                    movie_ids,
+                    short_term_like_vec,
+                    context.short_term_like,
+                    20,
+                    0.40,
+                    0.70,
+                    0.60,
+                )
+
+            await async_supabase_execute(
+                supabase.table("chat_sessions")
+                .update({
+                    "short_term_like": context.short_term_like,
+                    "short_term_dislike": context.short_term_dislike,
+                    "already_recommend": list(already_recommend),
+                    "move_history": move_history,
+                    "mismatch_hint": mismatch_hints,
+                })
+                .eq("id", session_id)
             )
-            # print(mismatch_hints)
 
-        await async_supabase_execute(
-            supabase.table("chat_sessions").update({
-                "short_term_like": context.short_term_like,
-                "short_term_dislike": context.short_term_dislike,
-                "already_recommend": list(already_recommend),
-                "move_history": move_history,
-                "mismatch_hint": mismatch_hints,
-            }).eq("id", session_id)
-        )
+            await async_supabase_execute(
+                supabase.table("chat_messages").insert({
+                    "session_id": session_id,
+                    "role": "user",
+                    "category": None,
+                    "content": user_input,
+                })
+            )
 
-        await async_supabase_execute(
-            supabase.table("chat_messages").insert({
-                "session_id": session_id,
-                "role": "user",
-                "category": None,
-                "content": user_input,
-            })
-        )
+            await async_supabase_execute(
+                supabase.table("chat_messages").insert({
+                    "session_id": session_id,
+                    "role": "system",
+                    "category": current_turn_move,
+                    "content": full_system_res,
+                })
+            )
 
-        await async_supabase_execute(
-            supabase.table("chat_messages").insert({
-                "session_id": session_id,
-                "role": "system",
-                "category": current_turn_move,
-                "content": full_system_res,
-            })
-        )
+            print(
+                f"[INFO] session={session_id} move={current_turn_move} total_elapsed={time.monotonic() - start_time:.2f}s"
+            )
+            yield "data: [DONE]\n\n"
 
-        yield "data: [DONE]\n\n"
+        except Exception as e:
+            print(
+                f"[ERROR] session={session_id} move={current_turn_move} in event_generator: {type(e).__name__}: {e}"
+            )
+            traceback.print_exc()
+            yield f"data: {json.dumps({'error': 'ストリーム処理中にエラーが発生しました'})}\n\n"
+            yield "data: [DONE]\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
