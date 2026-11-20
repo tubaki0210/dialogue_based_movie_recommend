@@ -144,55 +144,57 @@ export default function ChatField({ sessionId }: ChatViewProps) {
     isStreamDoneRef.current = false;
     setLoading(true);
 
-    try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ session_id: sessionId, user_input: userMsg }),
-      });
+  try {
+    const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL}/api/chat`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: sessionId, user_input: userMsg }),
+    });
 
-      if (!response.body) throw new Error("レスポンスボディが空です。");
+    if (!response.ok) {
+      throw new Error(`HTTPエラー: ${response.status}`);
+    }
+    if (!response.body) throw new Error("レスポンスボディが空です。");
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
-      let done = false;
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder("utf-8");
+    let done = false;
 
-      while (!done) {
-        const { value, done: doneReading } = await reader.read();
-        done = doneReading;
-        const chunkValue = decoder.decode(value, { stream: true });
+    while (!done) {
+      const { value, done: doneReading } = await reader.read();
+      done = doneReading;
+      const chunkValue = decoder.decode(value, { stream: true });
 
-        const lines = chunkValue.split("\n\n");
-        for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (trimmedLine.startsWith("data:")) {
-            const dataStr = trimmedLine.replace("data:", "").trim();
-            if (dataStr === "[DONE]") {
-              done = true;
-              break;
-            }
-
-            try {
-              const parsed = JSON.parse(dataStr);
-              if (parsed.content) {
-                queueRef.current.push(...parsed.content.split(""));
-              }
-            } catch (jsonErr) {}
+      const lines = chunkValue.split("\n\n");
+      for (const line of lines) {
+        const trimmedLine = line.trim();
+        if (trimmedLine.startsWith("data:")) {
+          const dataStr = trimmedLine.replace("data:", "").trim();
+          if (dataStr === "[DONE]") {
+            done = true;
+            break;
           }
+
+          try {
+            const parsed = JSON.parse(dataStr);
+            if (parsed.content) {
+              queueRef.current.push(...parsed.content.split(""));
+            }
+          } catch (jsonErr) {}
         }
       }
-    } catch (error) {
-      console.error(error);
-      alert("通信エラーが発生しました。");
-      setLoading(false);
-    } finally {
-      isStreamDoneRef.current = true;
     }
-  };
+  } catch (error) {
+    console.error("Chat stream error:", error);
+    alert("通信エラーが発生しました。");
+    setLoading(false);
+  } finally {
+    isStreamDoneRef.current = true;
+  }
+}
 
   return (
-<div className="flex flex-col flex-1 w-full h-full overflow-hidden bg-gray-50">
-      
+  <div className="flex flex-col flex-1 w-full h-full overflow-hidden bg-gray-50">    
       {/* --- ★ チャット画面上部の注意事項ヘッダーバー --- */}
       <div className="bg-blue-50 border-b border-blue-200 px-3 py-2 sm:px-4 sm:py-2.5 text-xs sm:text-sm text-blue-900 flex flex-col gap-1 shrink-0">
         <div className="font-medium">
